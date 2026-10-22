@@ -365,6 +365,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
           <button class="tab" data-tab="imp" type="button">批次匯入</button>
         </div>
         <button class="btn small ghost" id="reloadBtn" type="button">重新整理</button>
+        <button class="btn small ghost" id="testTg" type="button">測試 Telegram 通知</button>
         <button class="btn small ghost" id="logoutBtn" type="button">登出</button>
       </div>
       <div id="appMsg"></div>
@@ -829,6 +830,21 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   $('#loginForm').addEventListener('submit', function (e) { e.preventDefault(); login(); });
   $('#logoutBtn').addEventListener('click', function () { forgetToken(); location.reload(); });
   $('#reloadBtn').addEventListener('click', function () { load(); });
+  $('#testTg').addEventListener('click', function () {
+    var out = $('#appMsg'), btn = $('#testTg');
+    btn.disabled = true; msg(out, 'warn', '測試中…');
+    api('/api/admin/test-notify', { method: 'POST' }).then(function (d) {
+      if (d.ok) return msg(out, 'ok', '已送出測試訊息，請到 Telegram 查看。收到代表設定完成。');
+      var why;
+      if (d.error === 'not_configured') why = '後端還沒設定好：' + (!d.configured.token ? '找不到 TELEGRAM_BOT_TOKEN。' : '') + (!d.configured.chat_id ? '找不到 TELEGRAM_CHAT_ID。' : '') + ' 請到 Cloudflare 的 Settings → Variables and Secrets 新增，並記得按 Deploy。';
+      else if (d.error === 'network') why = '後端連不上 Telegram，請稍後再試。';
+      else if (d.status === 401 || /unauthorized/i.test(d.error)) why = 'Token 不正確（Telegram 回應 Unauthorized）。請確認 TELEGRAM_BOT_TOKEN 是完整的、前後沒有多餘空白，如果剛作廢過舊的，要貼新的 Token。';
+      else if (/chat not found/i.test(d.error)) why = '找不到這個 Chat ID。請確認 TELEGRAM_CHAT_ID 的數字正確，而且你已經在 Telegram 對機器人按過 Start 並傳過一句話。';
+      else if (d.status === 403) why = '機器人被擋住或被踢出群組。請在 Telegram 重新對機器人按 Start（群組要重新把機器人加入）。';
+      else why = 'Telegram 回應：' + (d.error || ('狀態 ' + d.status));
+      msg(out, 'err', why);
+    }).catch(function (e) { msg(out, 'err', e.message); }).then(function () { btn.disabled = false; });
+  });
   $('#mPrev').addEventListener('click', function () { view.m--; if (view.m < 1) { view.m = 12; view.y--; } renderCal(); });
   $('#mNext').addEventListener('click', function () { view.m++; if (view.m > 12) { view.m = 1; view.y++; } renderCal(); });
   $('#mToday').addEventListener('click', function () { selDate = today; view = { y: +today.slice(0, 4), m: +today.slice(5, 7) }; renderCal(); renderDay(); });
