@@ -371,7 +371,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
           <button class="tab" data-tab="imp" type="button">批次匯入</button>
         </div>
         <button class="btn small ghost" id="reloadBtn" type="button">重新整理</button>
-        <button class="btn small ghost" id="testTg" type="button">測試通知（Telegram／Email）</button>
+        <button class="btn small ghost" id="testTg" type="button">測試通知</button>
         <button class="btn small ghost" id="logoutBtn" type="button">登出</button>
       </div>
       <div id="appMsg"></div>
@@ -853,6 +853,20 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         else if (d.status === 403) tw = '機器人被擋住，請在 Telegram 重新按 Start。';
         else tw = 'Telegram 回應：' + (d.error || ('狀態 ' + d.status));
         parts.push('❌ Telegram：' + tw);
+      }
+      // LINE
+      var l = d.line || {};
+      if (l.ok) parts.push('✅ LINE：已送出，請到 LINE 查看。');
+      else {
+        var lw;
+        if (l.error === 'not_configured') lw = '尚未設定（需要 LINE_CHANNEL_TOKEN 與 LINE_USER_ID）。不需要 LINE 通知可忽略。';
+        else if (l.error === 'network') lw = '後端連不上 LINE，請稍後再試。';
+        else if (l.status === 401) lw = '頻道存取權杖不正確或已失效，請重新發行（Issue）並完整貼上。';
+        else if (l.status === 400) lw = 'User ID 不正確（應為 U 開頭、共 33 碼），或你還沒加這個官方帳號為好友。LINE 回應：' + (l.error || '');
+        else if (l.status === 429) lw = '本月免費訊息數已用完。';
+        else lw = 'LINE 回應：' + (l.error || ('狀態 ' + l.status));
+        if (l.error !== 'not_configured') allOk = false;
+        parts.push('❌ LINE：' + lw);
       }
       // Email
       if (e.ok) parts.push('✅ Email：已寄出測試信到你的信箱（若沒看到請查垃圾郵件）。');
