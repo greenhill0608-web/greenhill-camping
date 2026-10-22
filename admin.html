@@ -728,7 +728,23 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     }
     if (act === 'status') {
       api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: { status: t.getAttribute('data-to') } })
-        .then(load).then(function () { out.innerHTML = ''; }).catch(function (er) { msg(out, 'err', er.message); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+        .then(function (r) { return load().then(function () { return r; }); })
+        .then(function (r) {
+          out.innerHTML = '';
+          var n = r && r.notify;
+          if (!n) return;
+          if (n.already) return msg(out, 'warn', '這筆原本就是「已預約」，所以沒有再通知客人。');
+          var L = n.line, E = n.email, parts = [];
+          if (L === 'sent') parts.push('✅ 已用 LINE 通知客人。');
+          else if (L === 'not_linked') parts.push('ℹ️ 客人還沒綁定 LINE（沒有傳預約代碼給官方帳號），所以沒有 LINE 通知。');
+          else if (L === 'not_configured') parts.push('❌ 後端沒有設定 LINE_CHANNEL_TOKEN，無法傳 LINE。');
+          else parts.push('❌ LINE 通知失敗：' + L.replace('failed: ', '') + '（可能是權杖失效，或本月免費訊息數已用完）');
+          if (E === 'sent') parts.push('✅ 已寄 Email 給客人。');
+          else if (E !== 'skipped') parts.push('❌ Email 失敗：' + E.replace('failed: ', ''));
+          msg(out, /❌/.test(parts.join('')) ? 'err' : (L === 'sent' || E === 'sent' ? 'ok' : 'warn'), parts.join('\n'));
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        })
+        .catch(function (er) { msg(out, 'err', er.message); window.scrollTo({ top: 0, behavior: 'smooth' }); });
       return;
     }
     if (act === 'del') {
