@@ -272,6 +272,11 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .lk-act { margin-top: 6px; }
 .btn.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
 
+/* LINE */
+.btn.line { background: #06c755; border-color: #06c755; color: #fff; }
+.line-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; padding: 12px 18px; border-radius: 99px;
+  background: #06c755; color: #fff; font-weight: 700; text-decoration: none; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+
 </style>
 <style>
 :root { --hold-bg: #e1ebf8; --hold-ink: #1f4a85; --hold-solid: #3b6fb6; --free-line: #c3ccbd; }
@@ -868,6 +873,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         if (l.error !== 'not_configured') allOk = false;
         parts.push('❌ LINE：' + lw);
       }
+      parts.push(d.line_webhook ? 'ℹ️ LINE 客人綁定：已設定 LINE_CHANNEL_SECRET。' : 'ℹ️ LINE 客人綁定：尚未設定 LINE_CHANNEL_SECRET（客人傳代碼綁定功能需要）。');
       // Email
       if (e.ok) parts.push('✅ Email：已寄出測試信到你的信箱（若沒看到請查垃圾郵件）。');
       else {

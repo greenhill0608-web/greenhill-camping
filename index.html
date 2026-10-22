@@ -275,6 +275,11 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .lk-act { margin-top: 6px; }
 .btn.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
 
+/* LINE */
+.btn.line { background: #06c755; border-color: #06c755; color: #fff; }
+.line-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; padding: 12px 18px; border-radius: 99px;
+  background: #06c755; color: #fff; font-weight: 700; text-decoration: none; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+
 </style>
 
 </head>
@@ -483,6 +488,7 @@ td .sub { color: var(--muted); font-size: .82rem; }
   <div class="wrap"><p>南窩綠丘｜草地露營　GREEN HILL CAMPING</p><p><a href="admin.html">營主後台</a></p></div>
 </footer>
 
+<a class="line-fab" href="https://line.me/R/ti/p/@cfz4680x" target="_blank" rel="noopener">LINE 詢問</a>
 <script>
 /* ★ 只需要改這一行：貼上你的 Cloudflare Worker 網址（結尾不要加斜線） */
 window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.green-hill-0608.workers.dev' };
@@ -699,6 +705,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
 (function () {
   'use strict';
 
+  const LINE_ID = (window.GH_CONFIG || {}).LINE_ID || '@cfz4680x';
+  const lineBindUrl = (id) => 'https://line.me/R/oaMessage/' + LINE_ID + '/?' + encodeURIComponent('預約代碼 ' + id);
   const API = ((window.GH_CONFIG || {}).API_BASE || '').replace(/\/+$/, '');
 
   // 與後端 worker/src/index.js 相同的價格設定（顯示用，實際金額以伺服器計算為準）
@@ -922,6 +930,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       r.innerHTML =
         '<div class="panel"><h3>預約申請已送出</h3>' +
         '<p>您的預約代碼</p><div class="code">' + esc(data.id) + '</div>' +
+        '<p><a class="btn line" href="' + lineBindUrl(data.id) + '" target="_blank" rel="noopener">傳到 LINE，確認後自動通知我</a></p>' +
+        '<p class="muted" style="font-size:.85rem">按按鈕後會開啟 LINE，已帶好預約代碼，按「傳送」就完成，之後確認或取消都會在 LINE 通知您。</p>' +
         '<p>請截圖或記下代碼，之後可在下方「查詢 / 取消我的預約」用手機號碼查詢進度或取消。目前狀態為 <span class="status pending">待確認</span>，營主確認後會與您聯絡。</p>' +
         data.breakdown.map(lineHtml).join('') +
         '<div class="sum-total"><span>合計</span><span>' + money(data.total) + '</span></div>' +
@@ -944,6 +954,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       '<div class="lk-top"><span class="status ' + esc(b.status) + '">' + esc(STATUS_TEXT[b.status] || b.status) + '</span> <b>' + esc(b.id) + '</b></div>' +
       '<div>' + esc(b.check_in) + ' 入營 → ' + esc(b.check_out) + ' 拔營（' + b.nights + ' 晚）</div>' +
       '<div>' + (b.tents ? b.tents + ' 帳｜' : '') + '營區 ' + esc(b.zones.join('、')) + '｜' + b.guests + ' 人｜合計 ' + money(b.total) + '</div>' +
+      (b.can_cancel && !b.line_linked ? '<div class="lk-act"><a class="btn line small" href="' + lineBindUrl(b.id) + '" target="_blank" rel="noopener">用 LINE 接收通知</a></div>' : '') +
+      (b.can_cancel && b.line_linked ? '<div class="muted" style="font-size:.85rem">✓ 已綁定 LINE 通知</div>' : '') +
       (b.can_cancel ? '<div class="lk-act"><button type="button" class="btn ghost small" data-cancel="' + esc(b.id) + '">取消這筆預約</button></div>' : '') +
       '</div>';
   }
