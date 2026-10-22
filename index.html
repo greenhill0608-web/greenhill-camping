@@ -280,6 +280,21 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .line-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; padding: 12px 18px; border-radius: 99px;
   background: #06c755; color: #fff; font-weight: 700; text-decoration: none; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
 
+/* 已訂日期的替代建議 */
+.alt-box { margin-top: 14px; padding: 14px 16px; border: 1.5px solid var(--cal-solid, #2f5d3a); border-radius: 12px; background: var(--surface); }
+.alt-title { margin-bottom: 4px; }
+.alt-sub { margin: 10px 0 6px; font-size: .9rem; color: var(--muted); }
+.alt-list { display: grid; gap: 8px; }
+.alt-opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--bg); color: inherit; font: inherit; cursor: pointer; }
+.alt-opt:hover { border-color: var(--cal-solid, #2f5d3a); }
+.alt-opt .a-name { font-weight: 700; }
+.alt-opt .a-price { font-weight: 700; text-align: right; }
+.alt-opt .a-meta { font-size: .8rem; color: var(--muted); }
+.alt-opt .a-go { font-size: .8rem; text-align: right; color: var(--cal-solid, #2f5d3a); font-weight: 700; }
+.alt-dates { display: flex; flex-wrap: wrap; gap: 8px; }
+.alt-date { padding: 8px 14px; border: 1.5px solid var(--line); border-radius: 99px; background: var(--bg); color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+.alt-date:hover { border-color: var(--cal-solid, #2f5d3a); }
+
 </style>
 
 </head>
@@ -432,8 +447,9 @@ td .sub { color: var(--muted); font-size: .82rem; }
 
         <div class="panel">
           <h3>3. 從日曆選日期</h3>
-          <p class="hint" style="margin-top:-6px">日曆只標示所選營區組合有空的日子。</p>
+          <p class="hint" style="margin-top:-6px">日曆標示所選營區組合有空的日子。想要的日子顯示「已訂」？點一下，系統會告訴您同一天哪些營區還有空位。</p>
           <div id="cal" class="cal"></div>
+          <div id="altBox" class="alt-box" hidden aria-live="polite"></div>
           <input type="hidden" id="checkIn"><input type="hidden" id="checkOut">
           <div id="nightsInfo" class="hint" style="margin-top:8px"></div>
         </div>
@@ -585,7 +601,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
           if (date <= st.ci) disabled = isBlocked;                       // 點更早的日子 = 重選入營日
           else disabled = date > maxOut || (limitBlock && date > limitBlock); // 拔營日可以是被占用的那天
         } else disabled = isBlocked;
-        h += '<button type="button" class="' + cls + '" data-date="' + date + '"' + (disabled ? ' disabled' : '') + ' aria-label="' + date + (sub ? ' ' + sub : '') + '">' +
+        var hintOnly = disabled && isBlocked && !!o.onBlocked; // 已訂的日子仍可點，點了會建議其他營區
+        h += '<button type="button" class="' + cls + '" data-date="' + date + '"' + (hintOnly ? ' data-full="1"' : (disabled ? ' disabled' : '')) + ' aria-label="' + date + (sub ? ' ' + sub : '') + (hintOnly ? '，點選查看其他營區' : '') + '">' +
           '<span class="n">' + d + '</span><span class="s">' + esc(sub) + '</span></button>';
       }
       h += '</div>';
@@ -617,6 +634,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       }
       if (e.target.closest('[data-clear]')) { st.ci = ''; st.co = ''; st.msg = ''; render(); emit(); return; }
       var btn = e.target.closest('[data-date]');
+      if (btn && btn.getAttribute('data-full') === '1') { if (o.onBlocked) o.onBlocked(btn.getAttribute('data-date')); return; }
       if (!btn || btn.disabled) return;
       var date = btn.getAttribute('data-date');
       st.msg = '';
@@ -644,6 +662,25 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         render(); emit();
       },
       clear: function () { st.ci = ''; st.co = ''; st.msg = ''; render(); emit(); },
+      // 把某天設為入營日（等著選拔營日）
+      setStart: function (date) {
+        st.ci = date; st.co = ''; st.msg = '';
+        var p = date.split('-');
+        view = { y: +p[0], m: +p[1] };
+        render(); emit();
+      },
+      // 某天各營區的佔用情形（沒資料回傳 undefined）
+      bookedOn: function (date) { return booked[date]; },
+      // 所選營區組合在 date 前後最近的空檔（單晚），最多 n 個，由近到遠
+      nearestFree: function (date, n) {
+        var out = [];
+        for (var k = 1; k <= 45 && out.length < n; k++) {
+          [o.addDays(date, -k), o.addDays(date, k)].forEach(function (d) {
+            if (out.length < n && d >= today && known(d) && !blocked(d)) out.push(d);
+          });
+        }
+        return out;
+      },
       refresh: function () { booked = {}; loaded = {}; render(); }
     };
   }
@@ -789,6 +826,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     state.key = opt.key;
     state.ids = opt.ids;
     state.unavailable = new Set();
+    hideAlt();
     renderOptions();
     if (calendar) calendar.setRequired(physZones(opt.ids));
     renderSummary();
@@ -800,6 +838,53 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     state.options = buildOptions(state.tents);
     const keep = state.options.find((o) => o.key === state.key);
     selectOption(keep ? keep.key : state.options[0].key);
+  }
+
+  // ---------- 已訂的日子 → 主動建議其他營區 / 其他日期 ----------
+  const mdLabel = (d) => Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10));
+  function hideAlt() { const b = $('#altBox'); if (b) { b.hidden = true; b.innerHTML = ''; } }
+
+  function showAlternatives(date) {
+    const box = $('#altBox');
+    if (!box || !calendar) return;
+    const cur = state.options.find((o) => o.key === state.key);
+    const bookedZones = calendar.bookedOn(date) || [];
+    const alts = state.options.filter((o) => o.key !== state.key && !physZones(o.ids).some((z) => bookedZones.includes(z)));
+    const near = calendar.nearestFree(date, 4).sort();
+    let h = '<div class="alt-title"><strong>' + mdLabel(date) + ' 的「' + esc(cur ? cur.name : '') + '」已被訂走</strong></div>';
+    if (alts.length) {
+      h += '<p class="alt-sub">同一天，這些營區組合還有空位（都可搭 ' + state.tents + ' 帳以上）：</p><div class="alt-list">' +
+        alts.slice(0, 4).map((o) =>
+          '<button type="button" class="alt-opt" data-alt-key="' + esc(o.key) + '"><span class="a-name">' + esc(o.name) + '</span>' +
+          '<span class="a-price">' + money(isPeak(date) ? o.peak : o.price) + ' / 晚</span>' +
+          '<span class="a-meta">可搭 ' + o.cap + ' 帳｜' + (o.cooler ? '含冰箱' : '無冰箱') + '</span><span class="a-go">改選這個 ›</span></button>').join('') + '</div>';
+    } else {
+      h += '<p class="alt-sub">這一天所有可搭 ' + state.tents + ' 帳的營區組合都已被訂走。</p>';
+    }
+    if (near.length) {
+      h += '<p class="alt-sub">或維持「' + esc(cur ? cur.name : '') + '」，改選最近有空的日子：</p><div class="alt-dates">' +
+        near.map((d) => '<button type="button" class="alt-date" data-alt-date="' + d + '">' + mdLabel(d) + '</button>').join('') + '</div>';
+    }
+    h += '<p class="alt-sub"><button type="button" class="cal-clear" data-alt-close="1">先不用，關閉</button></p>';
+    box.innerHTML = h;
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    box.dataset.date = date;
+  }
+
+  function onAltClick(e) {
+    const box = $('#altBox');
+    if (e.target.closest('[data-alt-close]')) return hideAlt();
+    const k = e.target.closest('[data-alt-key]');
+    if (k) {
+      const date = box.dataset.date;
+      selectOption(k.getAttribute('data-alt-key'));
+      hideAlt();
+      if (calendar) calendar.setStart(date);
+      return;
+    }
+    const d = e.target.closest('[data-alt-date]');
+    if (d) { hideAlt(); if (calendar) calendar.setStart(d.getAttribute('data-alt-date')); }
   }
 
   // ---------- 試算 ----------
@@ -1008,13 +1093,15 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     calendar = window.GHCal.create({
       root: $('#cal'), today: todayTaipei(), isPeak, addDays, nightsBetween, maxNights: RULES.maxNights,
       loadBooked: fetchBooked,
-      onChange: (ci, co) => { $('#checkIn').value = ci; $('#checkOut').value = co; onDatesChange(); },
+      onBlocked: showAlternatives,
+      onChange: (ci, co) => { $('#checkIn').value = ci; $('#checkOut').value = co; hideAlt(); onDatesChange(); },
     });
     $('#tents').addEventListener('change', () => setTents($('#tents').value));
     $('#tentsMinus').addEventListener('click', () => setTents(state.tents - 1));
     $('#tentsPlus').addEventListener('click', () => setTents(state.tents + 1));
     ['guests', 'visitors'].forEach((id) => $('#' + id).addEventListener('input', renderSummary));
     $('#bookForm').addEventListener('submit', onSubmit);
+    $('#altBox').addEventListener('click', onAltClick);
     $('#lookupForm').addEventListener('submit', onLookup);
     $('#lkResult').addEventListener('click', onLookupClick);
     setTents(state.tents);
