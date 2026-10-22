@@ -272,6 +272,8 @@ td .sub { color: var(--muted); font-size: .82rem; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --hold-bg: #1b2c45; --hold-ink: #a9c8f0; --hold-solid: #6d9de0; --free-line: #3a4a3e; } }
 :root[data-theme="dark"] { --hold-bg: #1b2c45; --hold-ink: #a9c8f0; --hold-solid: #6d9de0; --free-line: #3a4a3e; }
 
+.remember { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+.remember input { accent-color: var(--moss); width: 18px; height: 18px; }
 .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
 .tab { border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 18px; border-radius: 999px; font: 700 .95rem var(--font); cursor: pointer; }
 .tab.on { background: var(--head); color: var(--on-head); border-color: var(--head); }
@@ -345,8 +347,13 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
 
     <div id="loginBox" class="panel" style="max-width:420px">
       <h3>登入</h3>
-      <div class="field"><label for="token">後台密碼（ADMIN_TOKEN）</label><input type="password" id="token" autocomplete="current-password"></div>
-      <button class="btn" id="loginBtn" type="button">登入</button>
+      <form id="loginForm" autocomplete="on">
+        <input type="text" name="username" value="admin" autocomplete="username" hidden aria-hidden="true">
+        <div class="field"><label for="token">後台密碼（ADMIN_TOKEN）</label><input type="password" id="token" name="password" autocomplete="current-password"></div>
+        <label class="remember"><input type="checkbox" id="remember" checked> 記住密碼（這台裝置下次自動登入）</label>
+        <p class="hint" style="margin:4px 0 14px">只在自己的電腦或手機勾選；用別人的裝置請取消勾選。</p>
+        <button class="btn" id="loginBtn" type="submit">登入</button>
+      </form>
       <div id="loginMsg"></div>
     </div>
 
@@ -494,8 +501,23 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   var ST = { confirmed: '已預約', pending: '待確認', hold: '保留', cancelled: '已取消' };
   var PEAK = ['2027-02-05', '2027-02-09'];
 
+  var KEY = 'gh_admin_saved';
   var token = '';
-  try { token = sessionStorage.getItem('gh_admin') || ''; } catch (e) {}
+  (function () {
+    var saved = '', sess = '';
+    try { saved = localStorage.getItem(KEY) || ''; } catch (e) {}
+    try { sess = sessionStorage.getItem('gh_admin') || ''; } catch (e) {}
+    token = saved || sess;
+    $('#remember').checked = saved ? true : !sess;
+  })();
+  function persistToken() {
+    try { sessionStorage.setItem('gh_admin', token); } catch (e) {}
+    try { if ($('#remember').checked) localStorage.setItem(KEY, token); else localStorage.removeItem(KEY); } catch (e) {}
+  }
+  function forgetToken() {
+    try { sessionStorage.removeItem('gh_admin'); } catch (e) {}
+    try { localStorage.removeItem(KEY); } catch (e) {}
+  }
   var bookings = [];
   var occ = {};
   var today = todayTaipei();
@@ -521,13 +543,14 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   function load() {
     return api('/api/admin/bookings').then(function (d) {
       bookings = d.bookings;
+      persistToken();
       $('#loginBox').hidden = true;
       $('#app').hidden = false;
       buildOcc();
       renderAll();
     }).catch(function (e) {
       if (e.status === 401) {
-        try { sessionStorage.removeItem('gh_admin'); } catch (x) {}
+        forgetToken();
         token = '';
         $('#loginBox').hidden = false; $('#app').hidden = true;
         msg($('#loginMsg'), 'err', '密碼錯誤或未授權');
@@ -799,13 +822,12 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   function login() {
     if (!API) return msg($('#loginMsg'), 'err', '尚未設定 API 網址。');
     token = $('#token').value.trim();
-    try { sessionStorage.setItem('gh_admin', token); } catch (e) {}
+    if (!token) return msg($('#loginMsg'), 'err', '請輸入密碼。');
     load();
   }
   if (!API) $('#apiWarn').hidden = false;
-  $('#loginBtn').addEventListener('click', login);
-  $('#token').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
-  $('#logoutBtn').addEventListener('click', function () { try { sessionStorage.removeItem('gh_admin'); } catch (e) {} location.reload(); });
+  $('#loginForm').addEventListener('submit', function (e) { e.preventDefault(); login(); });
+  $('#logoutBtn').addEventListener('click', function () { forgetToken(); location.reload(); });
   $('#reloadBtn').addEventListener('click', function () { load(); });
   $('#mPrev').addEventListener('click', function () { view.m--; if (view.m < 1) { view.m = 12; view.y--; } renderCal(); });
   $('#mNext').addEventListener('click', function () { view.m++; if (view.m > 12) { view.m = 1; view.y++; } renderCal(); });
