@@ -269,6 +269,12 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .car-dot.on { width: 22px; border-radius: 99px; background: var(--brand); }
 @media (prefers-reduced-motion: reduce) { .car-track { scroll-behavior: auto; } }
 
+/* 查詢 / 取消預約 */
+.lk-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 10px 0; display: grid; gap: 4px; font-size: .92rem; background: var(--surface); }
+.lk-card.off { opacity: .55; }
+.lk-act { margin-top: 6px; }
+.btn.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
+
 </style>
 
 </head>
@@ -464,10 +470,9 @@ td .sub { color: var(--muted); font-size: .82rem; }
 <section id="lookup" class="alt">
   <div class="wrap">
     <div class="eyebrow">MY BOOKING</div>
-    <h2>查詢我的預約</h2>
-    <form id="lookupForm" class="panel" style="max-width:520px" novalidate>
-      <div class="field"><label for="lkCode">預約代碼</label><input type="text" id="lkCode" placeholder="GHXXXXXXXX"></div>
-      <div class="field"><label for="lkPhone">預約時填寫的手機</label><input type="tel" id="lkPhone"></div>
+    <h2>查詢 / 取消我的預約</h2>
+    <form id="lookupForm" class="panel" style="max-width:560px" novalidate>
+      <div class="field"><label for="lkPhone">預約時填寫的手機號碼</label><input type="tel" id="lkPhone" inputmode="tel" placeholder="例如 0912345678" autocomplete="tel"></div>
       <button class="btn" type="submit">查詢</button>
       <div id="lkResult" style="margin-top:16px"></div>
     </form>
@@ -917,7 +922,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       r.innerHTML =
         '<div class="panel"><h3>預約申請已送出</h3>' +
         '<p>您的預約代碼</p><div class="code">' + esc(data.id) + '</div>' +
-        '<p>請截圖或記下代碼，之後可用「代碼＋手機」查詢進度。目前狀態為 <span class="status pending">待確認</span>，營主確認後會與您聯絡。</p>' +
+        '<p>請截圖或記下代碼，之後可在下方「查詢 / 取消我的預約」用手機號碼查詢進度或取消。目前狀態為 <span class="status pending">待確認</span>，營主確認後會與您聯絡。</p>' +
         data.breakdown.map(lineHtml).join('') +
         '<div class="sum-total"><span>合計</span><span>' + money(data.total) + '</span></div>' +
         '<p style="margin-top:16px"><button type="button" class="btn ghost small" id="againBtn">再預約一筆</button></p></div>';
@@ -930,28 +935,59 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     }
   }
 
-  // ---------- 查詢預約 ----------
-  const STATUS_TEXT = { pending: '待確認', confirmed: '已確認', cancelled: '已取消' };
+  // ---------- 查詢 / 取消預約 ----------
+  const STATUS_TEXT = { pending: '待確認', confirmed: '已確認', hold: '保留中', cancelled: '已取消' };
+  let lkPhone = '';
+
+  function bookingCard(b) {
+    return '<div class="lk-card' + (b.status === 'cancelled' ? ' off' : '') + '" data-id="' + esc(b.id) + '">' +
+      '<div class="lk-top"><span class="status ' + esc(b.status) + '">' + esc(STATUS_TEXT[b.status] || b.status) + '</span> <b>' + esc(b.id) + '</b></div>' +
+      '<div>' + esc(b.check_in) + ' 入營 → ' + esc(b.check_out) + ' 拔營（' + b.nights + ' 晚）</div>' +
+      '<div>' + (b.tents ? b.tents + ' 帳｜' : '') + '營區 ' + esc(b.zones.join('、')) + '｜' + b.guests + ' 人｜合計 ' + money(b.total) + '</div>' +
+      (b.can_cancel ? '<div class="lk-act"><button type="button" class="btn ghost small" data-cancel="' + esc(b.id) + '">取消這筆預約</button></div>' : '') +
+      '</div>';
+  }
+
+  async function runLookup() {
+    const out = $('#lkResult');
+    if (!API) return showMsg(out, 'err', '網站尚未連接後端。');
+    const res = await fetch(API + '/api/bookings/lookup?phone=' + encodeURIComponent(lkPhone));
+    const data = await res.json();
+    if (!res.ok) return showMsg(out, 'err', data.error || '查詢失敗');
+    if (!data.bookings.length) return showMsg(out, 'err', '查無這支手機的預約，請確認號碼是否與預約時相同。');
+    out.innerHTML = data.bookings.map(bookingCard).join('') +
+      '<p class="muted" style="font-size:.85rem">入營日已到或需要改期，請直接聯絡營主。已付訂金者，取消後的退款請與營主確認。</p>';
+  }
 
   async function onLookup(e) {
     e.preventDefault();
     const out = $('#lkResult');
     out.innerHTML = '';
-    if (!API) return showMsg(out, 'err', '網站尚未連接後端。');
-    const code = $('#lkCode').value.trim().toUpperCase();
-    const phone = $('#lkPhone').value.trim();
-    try {
-      const res = await fetch(API + '/api/bookings/lookup?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone));
-      const data = await res.json();
-      if (!res.ok) return showMsg(out, 'err', data.error || '查詢失敗');
-      const b = data.booking;
-      out.innerHTML =
-        '<div class="alert ok"><div><span class="status ' + esc(b.status) + '">' + esc(STATUS_TEXT[b.status] || b.status) + '</span> ' + esc(b.name) + '</div>' +
-        '<div>' + esc(b.check_in) + ' 入營，' + esc(b.check_out) + ' 拔營（' + b.nights + ' 晚）</div>' +
-        '<div>' + (b.tents ? b.tents + ' 帳｜' : '') + '營區 ' + esc(b.zones.join('、')) + '｜總人數 ' + b.guests + '｜合計 ' + money(b.total) + '</div></div>';
-    } catch {
-      showMsg(out, 'err', '網路連線失敗，請稍後再試。');
+    lkPhone = $('#lkPhone').value.trim();
+    try { await runLookup(); } catch { showMsg(out, 'err', '網路連線失敗，請稍後再試。'); }
+  }
+
+  // 取消：先出現「確定取消？」，再按一次才真正送出
+  async function onLookupClick(e) {
+    const btn = e.target.closest('[data-cancel]');
+    if (!btn) return;
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1'; btn.textContent = '確定取消？再按一次'; btn.classList.add('danger');
+      setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = '取消這筆預約'; btn.classList.remove('danger'); } }, 6000);
+      return;
     }
+    btn.disabled = true; btn.textContent = '取消中…';
+    const out = $('#lkResult');
+    try {
+      const res = await fetch(API + '/api/bookings/cancel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: btn.dataset.cancel, phone: lkPhone }),
+      });
+      const data = await res.json();
+      await runLookup();
+      if (!res.ok) out.insertAdjacentHTML('afterbegin', '<div class="alert err">' + esc(data.error || '取消失敗') + '</div>');
+      else { out.insertAdjacentHTML('afterbegin', '<div class="alert ok">已取消，營位已釋出。</div>'); if (calendar) calendar.refresh(); }
+    } catch { btn.disabled = false; btn.textContent = '取消這筆預約'; showMsg(out, 'err', '網路連線失敗，請稍後再試。'); }
   }
 
   // ---------- 初始化 ----------
@@ -968,6 +1004,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     ['guests', 'visitors'].forEach((id) => $('#' + id).addEventListener('input', renderSummary));
     $('#bookForm').addEventListener('submit', onSubmit);
     $('#lookupForm').addEventListener('submit', onLookup);
+    $('#lkResult').addEventListener('click', onLookupClick);
     setTents(state.tents);
   }
   init();
