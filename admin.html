@@ -467,7 +467,13 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <div class="pane" id="pane-imp" hidden>
         <div class="panel">
           <h3>一次貼上已經有的預約</h3>
-          <p>從 Excel / Google 試算表複製整列貼上即可（用 Tab 或逗號分隔）。每行一筆，欄位順序：</p>
+          <p class="note" style="margin-top:0"><b>最快的方式：只鎖日期</b>　每行寫「日期 營區」，那天那幾區就會變成已預約，不用填姓名和金額：</p>
+          <ul class="note">
+            <li><code>2026/10/20 A,B</code>　→　10/20 這一晚，A 區和 B 區已被訂</li>
+            <li><code>2026/10/20~10/22 A</code>　→　10/20、10/21、10/22 三晚，A 區已被訂</li>
+            <li>沒寫年份就當作今年；B 就是整個 B 區（1帳、2帳都會一起鎖）。</li>
+          </ul>
+          <p>也可以貼完整資料（從 Excel / Google 試算表複製整列，用 Tab 或逗號分隔）。每行一筆，欄位順序：</p>
           <p class="note" style="margin-top:-6px"><b>入營日、拔營日、營區、姓名、電話、狀態、帳數、金額、備註</b>　（後面幾欄可以不填）</p>
           <ul class="note">
             <li>日期可寫 <code>2027/2/5</code>、<code>2027-02-05</code> 或民國 <code>116/2/5</code>；拔營日是離開那天。</li>
@@ -475,7 +481,9 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
             <li>狀態寫「已預約」「保留」「待確認」，沒寫就當作已預約。金額沒寫會依價目自動計算。</li>
             <li>先按「檢查」，會顯示每一行能不能匯入（日期衝突、格式錯誤都會指出），確認沒問題再按「匯入」。</li>
           </ul>
-          <div class="field"><textarea id="imp" class="mono" spellcheck="false" placeholder="116/2/5	116/2/9	A	林先生	0911222333	已預約	8	52000	春節包全區A
+          <div class="field"><textarea id="imp" class="mono" spellcheck="false" placeholder="2026/10/20 A,B
+2026/10/21~10/22 C
+116/2/5	116/2/9	A	林先生	0911222333	已預約	8	52000	春節包全區A
 116/3/6	116/3/8	C	陳小姐		保留			LINE詢問，等回覆
 2027-04-10,2027-04-12,B2,張小姐,0933444555"></textarea></div>
           <div class="actions">
@@ -789,14 +797,34 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       return p;
     });
   }
+  // 快速鎖定：「2026/10/20 A,B」或「2026/10/20~10/22 A,B」→ 整天鎖起來（已預約，不計金額）
+  var QD = '(?:\\d{2,4}[/.\\-年]\\d{1,2}[/.\\-月]\\d{1,2}日?|\\d{1,2}[/.\\-月]\\d{1,2}日?)';
+  var QUICK = new RegExp('^\\s*(' + QD + ')(?:\\s*[~～〜至到→]\\s*(' + QD + '))?[\\s,，]+([A-Da-dＡ-Ｄ][A-Da-dＡ-Ｄ0-9,，、+&\\s區]*)\\s*$');
+  function quickDate(s) {
+    var t = String(s).trim().replace(/日$/, '').replace(/[年月]/g, '-').replace(/[./]/g, '-');
+    if (/^\d{1,2}-\d{1,2}$/.test(t)) t = today.slice(0, 4) + '-' + t;
+    return normDate(t);
+  }
   function parseLines(text) {
     var rows = [];
     text.split(/\r?\n/).forEach(function (line, i) {
       if (!line.trim()) return;
+      var q = line.replace(/[Ａ-Ｄａ-ｄ]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(QUICK);
+      if (q) {
+        var d1 = quickDate(q[1]), d2 = q[2] ? quickDate(q[2]) : d1;
+        var qr = { line: i + 1, raw: line, error: '' };
+        if (!d1 || !d2) qr.error = '日期格式看不懂';
+        else if (d2 < d1) qr.error = '結束日期早於開始日期';
+        qr.payload = { check_in: d1, check_out: d2 ? addDays(d2, 1) : '', zones: parseZones(q[3], ''), name: '已訂（鎖定）', phone: '',
+          status: 'confirmed', tents: '', total: '0', note: '快速鎖定' };
+        if (!qr.error && !qr.payload.zones.length) qr.error = '沒有填營區';
+        rows.push(qr);
+        return;
+      }
       var c = line.indexOf('\t') >= 0 ? line.split('\t') : line.split(/[,，]/);
       c = c.map(function (x) { return x.trim(); });
       var ci = normDate(c[0]);
-      if (!ci && i === 0) return; // 標題列
+      if (!ci && i === 0 && !/\d{1,2}\s*[\/.\-月]\s*\d{1,2}/.test(line)) return; // 標題列（含日期的行不當標題）
       var tents = c[6] ? parseInt(c[6], 10) : '';
       var row = { line: i + 1, raw: line, error: '' };
       var co = normDate(c[1]);
