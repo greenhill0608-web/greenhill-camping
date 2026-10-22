@@ -266,6 +266,12 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .car-dot.on { width: 22px; border-radius: 99px; background: var(--brand); }
 @media (prefers-reduced-motion: reduce) { .car-track { scroll-behavior: auto; } }
 
+/* 查詢 / 取消預約 */
+.lk-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 10px 0; display: grid; gap: 4px; font-size: .92rem; background: var(--surface); }
+.lk-card.off { opacity: .55; }
+.lk-act { margin-top: 6px; }
+.btn.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
+
 </style>
 <style>
 :root { --hold-bg: #e1ebf8; --hold-ink: #1f4a85; --hold-solid: #3b6fb6; --free-line: #c3ccbd; }
@@ -365,7 +371,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
           <button class="tab" data-tab="imp" type="button">批次匯入</button>
         </div>
         <button class="btn small ghost" id="reloadBtn" type="button">重新整理</button>
-        <button class="btn small ghost" id="testTg" type="button">測試 Telegram 通知</button>
+        <button class="btn small ghost" id="testTg" type="button">測試通知（Telegram／Email）</button>
         <button class="btn small ghost" id="logoutBtn" type="button">登出</button>
       </div>
       <div id="appMsg"></div>
@@ -525,7 +531,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   var view = { y: +today.slice(0, 4), m: +today.slice(5, 7) };
   var selDate = today;
 
-  function msg(el, kind, text) { el.innerHTML = '<div class="alert ' + kind + '">' + esc(text) + '</div>'; }
+  function msg(el, kind, text) { el.innerHTML = '<div class="alert ' + kind + '" style="white-space:pre-line">' + esc(text) + '</div>'; }
 
   function api(path, opts) {
     opts = opts || {};
@@ -834,15 +840,35 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     var out = $('#appMsg'), btn = $('#testTg');
     btn.disabled = true; msg(out, 'warn', '測試中…');
     api('/api/admin/test-notify', { method: 'POST' }).then(function (d) {
-      if (d.ok) return msg(out, 'ok', '已送出測試訊息，請到 Telegram 查看。收到代表設定完成。');
-      var why;
-      if (d.error === 'not_configured') why = '後端還沒設定好：' + (!d.configured.token ? '找不到 TELEGRAM_BOT_TOKEN。' : '') + (!d.configured.chat_id ? '找不到 TELEGRAM_CHAT_ID。' : '') + ' 請到 Cloudflare 的 Settings → Variables and Secrets 新增，並記得按 Deploy。';
-      else if (d.error === 'network') why = '後端連不上 Telegram，請稍後再試。';
-      else if (d.status === 401 || /unauthorized/i.test(d.error)) why = 'Token 不正確（Telegram 回應 Unauthorized）。請確認 TELEGRAM_BOT_TOKEN 是完整的、前後沒有多餘空白，如果剛作廢過舊的，要貼新的 Token。';
-      else if (/chat not found/i.test(d.error)) why = '找不到這個 Chat ID。請確認 TELEGRAM_CHAT_ID 的數字正確，而且你已經在 Telegram 對機器人按過 Start 並傳過一句話。';
-      else if (d.status === 403) why = '機器人被擋住或被踢出群組。請在 Telegram 重新對機器人按 Start（群組要重新把機器人加入）。';
-      else why = 'Telegram 回應：' + (d.error || ('狀態 ' + d.status));
-      msg(out, 'err', why);
+      var e = d.email || {}, parts = [], allOk = true;
+      // Telegram
+      if (d.ok) parts.push('✅ Telegram：已送出，請到 Telegram 查看。');
+      else {
+        allOk = false;
+        var tw;
+        if (d.error === 'not_configured') tw = '尚未設定（TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID）。';
+        else if (d.error === 'network') tw = '後端連不上 Telegram，請稍後再試。';
+        else if (d.status === 401 || /unauthorized/i.test(d.error)) tw = 'Token 不正確，請貼上完整、沒有多餘空白的 Token。';
+        else if (/chat not found/i.test(d.error)) tw = '找不到這個 Chat ID，請確認數字正確且已對機器人按過 Start。';
+        else if (d.status === 403) tw = '機器人被擋住，請在 Telegram 重新按 Start。';
+        else tw = 'Telegram 回應：' + (d.error || ('狀態 ' + d.status));
+        parts.push('❌ Telegram：' + tw);
+      }
+      // Email
+      if (e.ok) parts.push('✅ Email：已寄出測試信到你的信箱（若沒看到請查垃圾郵件）。');
+      else {
+        var ew;
+        if (e.error === 'not_configured') ew = '尚未設定（需要 RESEND_API_KEY 與 NOTIFY_EMAIL）。不需要 Email 通知可忽略。';
+        else if (e.error === 'network') ew = '後端連不上 Resend，請稍後再試。';
+        else if (e.status === 401 || e.status === 403 && /api key/i.test(e.error)) ew = 'API Key 不正確，請重新複製 Resend 的 API Key。';
+        else if (e.status === 403) ew = 'Resend 拒絕寄送：' + (e.error || '') + '（免網域時，NOTIFY_EMAIL 必須是你註冊 Resend 的那個 Email）。';
+        else if (e.status === 422) ew = 'Email 格式或寄件設定有誤：' + (e.error || '');
+        else ew = 'Resend 回應：' + (e.error || ('狀態 ' + e.status));
+        if (e.error !== 'not_configured') allOk = false;
+        parts.push('❌ Email：' + ew);
+      }
+      parts.push(d.customer_mail ? 'ℹ️ 客人 Email 通知：已啟用（客人有填 Email 才會寄）。' : 'ℹ️ 客人 Email 通知：未啟用（需設定 EMAIL_FROM，見說明）。');
+      msg(out, allOk ? 'ok' : 'err', parts.join('\n'));
     }).catch(function (e) { msg(out, 'err', e.message); }).then(function () { btn.disabled = false; });
   });
   $('#mPrev').addEventListener('click', function () { view.m--; if (view.m < 1) { view.m = 12; view.y--; } renderCal(); });
