@@ -397,6 +397,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
                 <span><i class="chip st-hold">A</i>保留</span>
                 <span><i class="chip st-pending">A</i>待確認（網站送出）</span>
                 <span><i class="chip free">A</i>空位</span>
+                <span>「留」＝營主保留區（客人看不到）</span>
                 <span style="color:var(--fire)">橘框＝春節專案價</span>
               </div>
             </div>
@@ -423,6 +424,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
                 <label><input type="checkbox" value="B2">B 區 2帳</label>
                 <label><input type="checkbox" value="C">C 區</label>
                 <label><input type="checkbox" value="D">D 區</label>
+                <label><input type="checkbox" value="O">營主保留區</label>
               </div>
             </div>
             <div id="f_preview" class="preview"></div>
@@ -472,6 +474,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
             <li><code>2026/10/20 A,B</code>　→　10/20 這一晚，A 區和 B 區已被訂</li>
             <li><code>2026/10/20~10/22 A</code>　→　10/20、10/21、10/22 三晚，A 區已被訂</li>
             <li>沒寫年份就當作今年；B 就是整個 B 區（1帳、2帳都會一起鎖）。</li>
+            <li>營主自己要留的，營區寫 <code>營主保留</code>（或 <code>O</code>），例如 <code>2026/11/13~11/14 A,營主保留</code>。這個區只有後台能登記，客人網站看不到。</li>
           </ul>
           <p>也可以貼完整資料（從 Excel / Google 試算表複製整列，用 Tab 或逗號分隔）。每行一筆，欄位順序：</p>
           <p class="note" style="margin-top:-6px"><b>入營日、拔營日、營區、姓名、電話、狀態、帳數、金額、備註</b>　（後面幾欄可以不填）</p>
@@ -517,7 +520,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   var addDays = function (s, n) { return iso(new Date(new Date(s + 'T00:00:00Z').getTime() + n * 86400000)); };
   var todayTaipei = function () { return iso(new Date(Date.now() + 8 * 3600000)); };
   var nightsBetween = function (a, b) { var o = []; if (!a || !b) return o; for (var d = a; d < b && o.length < 400; d = addDays(d, 1)) o.push(d); return o; };
-  var ZONES = ['A', 'B', 'C', 'D'];
+  var ZONES = ['A', 'B', 'C', 'D', 'O'];
+  var zoneChip = function (z) { return z === 'O' ? '留' : z; };
+  var zoneName = function (z) { return z === 'O' ? '營主保留區' : z + '區'; };
   var ST = { confirmed: '已預約', pending: '待確認', hold: '保留', cancelled: '已取消' };
   var PEAK = ['2027-02-05', '2027-02-09'];
 
@@ -601,7 +606,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       var date = view.y + '-' + pad(view.m) + '-' + pad(d);
       var chips = ZONES.map(function (z) {
         var b = occ[date] && occ[date][z];
-        return '<i class="chip ' + (b ? 'st-' + b.status : 'free') + '">' + z + '</i>';
+        return '<i class="chip ' + (b ? 'st-' + b.status : 'free') + '">' + zoneChip(z) + '</i>';
       }).join('');
       var cls = 'mday' + (date === today ? ' today' : '') + (date === selDate ? ' sel' : '') + (date >= PEAK[0] && date <= PEAK[1] ? ' peak' : '');
       h += '<button type="button" class="' + cls + '" data-date="' + date + '" aria-label="' + date + '"><span class="n">' + d + '</span><span class="chips">' + chips + '</span></button>';
@@ -640,7 +645,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     var h = '<h3>' + esc(selDate) + '（' + wd + '）' + (selDate >= PEAK[0] && selDate <= PEAK[1] ? ' <span class="peak">春節專案價</span>' : '') + '</h3>';
     ZONES.forEach(function (z) {
       var b = occ[selDate] && occ[selDate][z];
-      h += '<div class="zrow"><div class="zl">' + z + '區</div><div class="zb">';
+      h += '<div class="zrow"><div class="zl">' + zoneName(z) + '</div><div class="zb">';
       if (!b) {
         h += '<div class="zfree">空位</div><div class="actions" style="margin-top:6px">' +
           '<button type="button" class="btn small hold" data-act="prefill" data-zone="' + z + '" data-type="hold">保留這區</button>' +
@@ -793,13 +798,14 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     var parts = String(s || '').toUpperCase().split(/[+、,，&\s]+/).filter(Boolean);
     return parts.map(function (p) {
       p = p.replace(/區|区/g, '');
+      if (p === 'O' || p === '營主' || p === '營主保留') return 'O';
       if (p === 'B') return (+tents === 1) ? 'B1' : 'B2';
       return p;
     });
   }
   // 快速鎖定：「2026/10/20 A,B」或「2026/10/20~10/22 A,B」→ 整天鎖起來（已預約，不計金額）
   var QD = '(?:\\d{2,4}[/.\\-年]\\d{1,2}[/.\\-月]\\d{1,2}日?|\\d{1,2}[/.\\-月]\\d{1,2}日?)';
-  var QUICK = new RegExp('^\\s*(' + QD + ')(?:\\s*[~～〜至到→]\\s*(' + QD + '))?[\\s,，]+([A-Da-dＡ-Ｄ][A-Da-dＡ-Ｄ0-9,，、+&\\s區]*)\\s*$');
+  var QUICK = new RegExp('^\\s*(' + QD + ')(?:\\s*[~～〜至到→]\\s*(' + QD + '))?[\\s,，]+((?:[A-DOa-doＡ-Ｄ]|營主)[A-Za-zＡ-Ｚ0-9,，、+&\\s區營主保留]*)\\s*$');
   function quickDate(s) {
     var t = String(s).trim().replace(/日$/, '').replace(/[年月]/g, '-').replace(/[./]/g, '-');
     if (/^\d{1,2}-\d{1,2}$/.test(t)) t = today.slice(0, 4) + '-' + t;
@@ -812,13 +818,17 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       var q = line.replace(/[Ａ-Ｄａ-ｄ]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(QUICK);
       if (q) {
         var d1 = quickDate(q[1]), d2 = q[2] ? quickDate(q[2]) : d1;
-        var qr = { line: i + 1, raw: line, error: '' };
-        if (!d1 || !d2) qr.error = '日期格式看不懂';
-        else if (d2 < d1) qr.error = '結束日期早於開始日期';
-        qr.payload = { check_in: d1, check_out: d2 ? addDays(d2, 1) : '', zones: parseZones(q[3], ''), name: '已訂（鎖定）', phone: '',
-          status: 'confirmed', tents: '', total: '0', note: '快速鎖定' };
-        if (!qr.error && !qr.payload.zones.length) qr.error = '沒有填營區';
-        rows.push(qr);
+        var zs0 = parseZones(q[3], ''), err0 = '';
+        if (!d1 || !d2) err0 = '日期格式看不懂';
+        else if (d2 < d1) err0 = '結束日期早於開始日期';
+        else if (!zs0.length) err0 = '沒有填營區';
+        var mk = function (zs, name, note) {
+          return { line: i + 1, raw: line, error: err0, payload: { check_in: d1, check_out: d2 ? addDays(d2, 1) : '', zones: zs, name: name, phone: '',
+            status: 'confirmed', tents: '', total: '0', note: note } };
+        };
+        var normal = zs0.filter(function (z) { return z !== 'O'; }), owner = zs0.filter(function (z) { return z === 'O'; });
+        if (normal.length || !owner.length) rows.push(mk(normal, '已訂（鎖定）', '快速鎖定'));
+        if (owner.length) rows.push(mk(owner, '營主保留', '營主保留區'));
         return;
       }
       var c = line.indexOf('\t') >= 0 ? line.split('\t') : line.split(/[,，]/);
