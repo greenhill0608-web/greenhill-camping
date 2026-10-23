@@ -365,6 +365,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
 .res .badc { color: var(--err-ink); }
 .filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: center; }
 .filters select, .filters input { width: auto; min-width: 150px; }
+.datef input[type=date] { min-width: 140px; }
 .pending-bar { margin: 0 0 16px; border: 2.5px solid var(--fire); border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 4px 16px rgba(184,95,23,.25); }
 .pending-bar .pb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; background: var(--fire); color: var(--on-fire, #fff); font-weight: 800; font-size: 1.1rem; }
 .pending-bar .pb-head .pb-n { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 99px; background: #fff; color: var(--fire); font-size: 1.05rem; }
@@ -414,6 +415,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <h3 id="cmTitle"></h3>
       <p id="cmBody"></p>
       <p id="cmInfo" class="cm-info"></p>
+      <label id="cmChkWrap" class="chk" style="margin-top:10px" hidden><input type="checkbox" id="cmChk"><span id="cmChkTxt"></span></label>
       <div class="actions"><button type="button" class="btn small ghost" id="cmNo">返回</button><button type="button" class="btn small ok" id="cmOk">確定</button></div>
     </div>
   </div>
@@ -519,7 +521,20 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
             <option value="cancelled">已取消</option>
           </select>
           <input type="text" id="l_q" placeholder="搜尋姓名 / 電話 / 備註" aria-label="搜尋">
+          <select id="l_sort" aria-label="排序">
+            <option value="in_asc">排序：扎營日 近→遠</option>
+            <option value="in_desc">排序：扎營日 遠→近</option>
+            <option value="new_first">排序：訂單接收 新→舊</option>
+            <option value="old_first">排序：訂單接收 舊→新</option>
+          </select>
           <span id="l_count" class="hint"></span>
+        </div>
+        <div class="filters datef">
+          <label class="hint" for="l_from">扎營日期</label>
+          <input type="date" id="l_from" aria-label="起">
+          <span class="hint">～</span>
+          <input type="date" id="l_to" aria-label="迄">
+          <button type="button" class="btn small ghost" id="l_clr">清除日期</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -781,15 +796,34 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   // ---------- 清單 ----------
   function renderList() {
     var st = $('#l_status').value, q = $('#l_q').value.trim().toLowerCase();
+    var from = $('#l_from').value, to = $('#l_to').value, sort = $('#l_sort').value;
     var rows = bookings.filter(function (b) {
       if (st ? b.status !== st : b.status === 'cancelled') return false;
+      // 日期篩選：這筆住宿的任何一晚落在區間內就算（只填一邊＝從該日起／到該日止）
+      var lastNight = addDays(b.check_out, -1);
+      if (from && lastNight < from) return false;
+      if (to && b.check_in > to) return false;
       if (!q) return true;
       return (b.name + ' ' + b.phone + ' ' + (b.note || '') + ' ' + b.id).toLowerCase().indexOf(q) >= 0;
     });
+    var cmp = {
+      in_asc: function (a, b) { return a.check_in < b.check_in ? -1 : a.check_in > b.check_in ? 1 : 0; },
+      in_desc: function (a, b) { return a.check_in < b.check_in ? 1 : a.check_in > b.check_in ? -1 : 0; },
+      new_first: function (a, b) { return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0; },
+      old_first: function (a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0; }
+    }[sort] || null;
+    if (cmp) rows = rows.slice().sort(cmp);
     $('#l_count').textContent = '共 ' + rows.length + ' 筆';
+    // 接收時間（資料庫是 UTC，轉成台北時間顯示）
+    function recv(b) {
+      if (!b.created_at) return '';
+      var t = new Date(b.created_at.replace(' ', 'T') + 'Z'); if (isNaN(t)) return '';
+      var s = new Date(t.getTime() + 8 * 3600000).toISOString();
+      return '<div class="sub">接收 ' + s.slice(5, 10) + ' ' + s.slice(11, 16) + '</div>';
+    }
     $('#l_rows').innerHTML = rows.length ? rows.map(function (b) {
       return '<tr><td><span class="pill st-' + b.status + '">' + ST[b.status] + '</span></td>' +
-        '<td>' + esc(b.check_in) + '<div class="sub">→ ' + esc(b.check_out) + '（' + b.nights + ' 晚）</div></td>' +
+        '<td>' + esc(b.check_in) + '<div class="sub">→ ' + esc(b.check_out) + '（' + b.nights + ' 晚）</div>' + recv(b) + '</td>' +
         '<td>' + esc(b.zones.join('、')) + (b.tents ? '<div class="sub">' + b.tents + ' 帳</div>' : '') + '</td>' +
         '<td>' + esc(b.name) + '<div class="sub">' + esc(b.phone === '-' ? '' : b.phone) + (b.hold_until ? ' 保留到 ' + esc(b.hold_until) : '') + (b.note ? ' ｜ ' + esc(b.note) : '') + '</div>' + contactHtml(b) + '</td>' +
         '<td class="num">' + money(b.total) + '</td><td>' + actionsHtml(b) + editHtml(b) + '</td></tr>';
@@ -863,8 +897,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
 
   // ---------- 動作（狀態 / 儲存 / 刪除 / 帶入表單）----------
   // 實際送出狀態變更（已經過確認視窗）
-  function doStatus(id, to, out) {
-    return api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: { status: to } })
+  function doStatus(id, to, out, notifyCustomer) {
+    var body = { status: to }; if (notifyCustomer) body.notify_customer = true;
+    return api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: body })
         .then(function (r) { return load().then(function () { return r; }); })
         .then(function (r) {
           out.innerHTML = '';
@@ -872,7 +907,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
           if (!n) return;
           if (n.already) return msg(out, 'warn', '這筆原本就是「已預約」，所以沒有再通知客人。');
           var L = n.line, E = n.email, parts = [];
-          if (L === 'sent') parts.push('✅ 已用 LINE 通知客人。');
+          if (L === 'sent') parts.push(n.cancelled ? '✅ 已用 LINE 通知客人預約取消。' : '✅ 已用 LINE 通知客人。');
           else if (L === 'not_linked') parts.push('ℹ️ 客人還沒綁定 LINE（沒有傳預約代碼給官方帳號），所以沒有 LINE 通知。');
           else if (L === 'not_configured') parts.push('ℹ️ 後端尚未設定 LINE 通知，所以沒有傳 LINE。');
           else parts.push('❌ LINE 通知失敗：' + L.replace('failed: ', '') + '（可能是權杖失效，或本月免費訊息數已用完）');
@@ -891,12 +926,15 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       $('#cmTitle').textContent = cfg.title;
       $('#cmBody').textContent = cfg.body;
       $('#cmInfo').textContent = cfg.info || '';
+      var cw = $('#cmChkWrap'), cc = $('#cmChk');
+      cw.hidden = !cfg.check;
+      if (cfg.check) { $('#cmChkTxt').textContent = cfg.check.label; cc.checked = !!cfg.check.checked; cc.disabled = !!cfg.check.disabled; }
       var ok = $('#cmOk'), no = $('#cmNo');
       ok.textContent = cfg.ok || '確定'; ok.className = 'btn small ' + (cfg.danger ? 'danger' : 'ok');
       m.hidden = false; no.focus();
       function done(v) { m.hidden = true; ok.onclick = no.onclick = m.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); }
       function onKey(e) { if (e.key === 'Escape') done(false); }
-      ok.onclick = function () { done(true); };
+      ok.onclick = function () { askConfirm.checked = cfg.check ? cc.checked : false; done(true); };
       no.onclick = function () { done(false); };
       m.onclick = function (e) { if (e.target === m) done(false); };
       document.addEventListener('keydown', onKey);
@@ -942,7 +980,11 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         ? { title: '確認這筆預約？', body: '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
         : { title: '取消這筆預約？', body: '取消後，營位會立刻釋出，別人就可以預訂。這筆紀錄會保留，狀態變成「已取消」。', ok: '取消並釋出', danger: true };
       cfg.info = info;
-      askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out); });
+      if (to === 'cancelled' && bk) {
+        cfg.check = bk.line_linked ? { label: '同時用 LINE 通知客人「預約已取消」', checked: true }
+          : { label: '客人尚未綁定 LINE，無法 LINE 通知（可打電話聯絡）', checked: false, disabled: true };
+      }
+      askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out, to === 'cancelled' && askConfirm.checked); });
       return;
     }
     if (act === 'save') {
@@ -1173,6 +1215,10 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   $('#f_submit').addEventListener('click', submitEntry);
   $('#l_status').addEventListener('change', renderList);
   $('#l_q').addEventListener('input', renderList);
+  $('#l_sort').addEventListener('change', renderList);
+  $('#l_from').addEventListener('change', renderList);
+  $('#l_to').addEventListener('change', renderList);
+  $('#l_clr').addEventListener('click', function () { $('#l_from').value = ''; $('#l_to').value = ''; renderList(); });
   $('#impCheck').addEventListener('click', runCheck);
   $('#impGo').addEventListener('click', runImport);
   $('#imp').addEventListener('input', function () { $('#impGo').disabled = true; checked = []; });
