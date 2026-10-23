@@ -380,6 +380,9 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
 .modal-card p { margin: 0 0 10px; line-height: 1.6; }
 .modal-card .cm-info { padding: 10px 12px; border-radius: 10px; background: var(--bg); font-weight: 700; font-size: .92rem; }
 .modal-card .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.contact { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.contact .btn.small { padding: 5px 10px; font-size: .8rem; text-decoration: none; white-space: nowrap; }
+.nolink { opacity: .7; }
 .chk { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
 .chk input { width: 20px; height: 20px; flex: none; }
 .chk .hint { font-weight: 400; }
@@ -412,6 +415,16 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <p id="cmBody"></p>
       <p id="cmInfo" class="cm-info"></p>
       <div class="actions"><button type="button" class="btn small ghost" id="cmNo">返回</button><button type="button" class="btn small ok" id="cmOk">確定</button></div>
+    </div>
+  </div>
+  <div id="lineModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="lmTitle">
+    <div class="modal-card">
+      <h3 id="lmTitle">傳 LINE 給客人</h3>
+      <p id="lmInfo" class="cm-info"></p>
+      <div id="lmTpl" class="contact" style="margin:10px 0"></div>
+      <textarea id="lmText" rows="5" maxlength="1000" style="width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--line,#ccc);font:inherit"></textarea>
+      <p id="lmStatus" class="hint" style="margin:6px 0 0"></p>
+      <div class="actions"><button type="button" class="btn small ghost" id="lmNo">返回</button><button type="button" class="btn small ok" id="lmOk">送出</button></div>
     </div>
   </div>
     <div id="app" hidden>
@@ -728,6 +741,43 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     $('#dayPanel').innerHTML = h;
   }
 
+  // ---------- 聯絡客人：打電話 / 傳 LINE ----------
+  function contactHtml(b) {
+    var tel = String(b.phone || '').replace(/[^0-9+]/g, '');
+    var a = [];
+    if (tel.length >= 8) a.push('<a class="btn small ghost" href="tel:' + tel + '">📞 打電話</a>');
+    if (b.line_linked) a.push('<button type="button" class="btn small ok" data-act="line" data-id="' + b.id + '">💬 傳 LINE</button>');
+    else if (tel.length >= 8 && b.status !== 'cancelled') a.push('<span class="sub nolink">未綁定 LINE</span>');
+    return a.length ? '<div class="contact">' + a.join('') + '</div>' : '';
+  }
+
+  function openLineModal(bk) {
+    var m = $('#lineModal'), ta = $('#lmText'), st = $('#lmStatus');
+    $('#lmInfo').textContent = bk.name + '｜' + bk.check_in + ' → ' + bk.check_out + '｜' + bk.zones.join('、');
+    var tpls = [
+      ['提醒入營', bk.name + ' 您好，提醒您 ' + bk.check_in + ' 入營，期待見到您！有任何問題歡迎隨時詢問。南窩綠丘'],
+      ['詢問付款', bk.name + ' 您好，您的預約（' + bk.check_in + ' → ' + bk.check_out + '）目前尚待確認，方便回覆一下嗎？南窩綠丘'],
+      ['天氣通知', bk.name + ' 您好，近期天氣可能不穩，我們會持續關注，有狀況會先通知您。南窩綠丘']
+    ];
+    $('#lmTpl').innerHTML = tpls.map(function (t, i) { return '<button type="button" class="btn small ghost" data-tpl="' + i + '">' + t[0] + '</button>'; }).join('');
+    ta.value = bk.name + ' 您好，'; st.textContent = '';
+    var send = $('#lmOk'), no = $('#lmNo');
+    send.disabled = false; m.hidden = false; ta.focus();
+    function close() { m.hidden = true; send.onclick = no.onclick = m.onclick = null; $('#lmTpl').onclick = null; document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    $('#lmTpl').onclick = function (e) { var b = e.target.closest('[data-tpl]'); if (b) ta.value = tpls[+b.getAttribute('data-tpl')][1]; };
+    no.onclick = close;
+    m.onclick = function (e) { if (e.target === m) close(); };
+    send.onclick = function () {
+      var text = ta.value.trim(); if (!text) { st.textContent = '請輸入訊息'; return; }
+      send.disabled = true; st.textContent = '傳送中…';
+      api('/api/admin/bookings/' + encodeURIComponent(bk.id) + '/message', { method: 'POST', body: { text: text } })
+        .then(function () { close(); msg($('#appMsg'), 'ok', '✅ 已用 LINE 傳給 ' + bk.name + '。'); window.scrollTo({ top: 0, behavior: 'smooth' }); })
+        .catch(function (er) { st.textContent = '❌ ' + er.message; send.disabled = false; });
+    };
+  }
+
   // ---------- 清單 ----------
   function renderList() {
     var st = $('#l_status').value, q = $('#l_q').value.trim().toLowerCase();
@@ -741,7 +791,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       return '<tr><td><span class="pill st-' + b.status + '">' + ST[b.status] + '</span></td>' +
         '<td>' + esc(b.check_in) + '<div class="sub">→ ' + esc(b.check_out) + '（' + b.nights + ' 晚）</div></td>' +
         '<td>' + esc(b.zones.join('、')) + (b.tents ? '<div class="sub">' + b.tents + ' 帳</div>' : '') + '</td>' +
-        '<td>' + esc(b.name) + '<div class="sub">' + esc(b.phone === '-' ? '' : b.phone) + (b.hold_until ? ' 保留到 ' + esc(b.hold_until) : '') + (b.note ? ' ｜ ' + esc(b.note) : '') + '</div></td>' +
+        '<td>' + esc(b.name) + '<div class="sub">' + esc(b.phone === '-' ? '' : b.phone) + (b.hold_until ? ' 保留到 ' + esc(b.hold_until) : '') + (b.note ? ' ｜ ' + esc(b.note) : '') + '</div>' + contactHtml(b) + '</td>' +
         '<td class="num">' + money(b.total) + '</td><td>' + actionsHtml(b) + editHtml(b) + '</td></tr>';
     }).join('') : '<tr><td colspan="6">沒有資料</td></tr>';
   }
@@ -877,6 +927,11 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       updatePreview();
       $('#addPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       $('#f_name').focus();
+      return;
+    }
+    if (act === 'line') {
+      var lb = bookings.filter(function (x) { return x.id === id; })[0];
+      if (lb) openLineModal(lb);
       return;
     }
     if (act === 'status') {
