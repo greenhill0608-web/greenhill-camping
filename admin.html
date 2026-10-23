@@ -365,6 +365,21 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
 .res .badc { color: var(--err-ink); }
 .filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; align-items: center; }
 .filters select, .filters input { width: auto; min-width: 150px; }
+.pending-bar { margin: 0 0 16px; border: 2.5px solid var(--fire); border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 4px 16px rgba(184,95,23,.25); }
+.pending-bar .pb-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; background: var(--fire); color: var(--on-fire, #fff); font-weight: 800; font-size: 1.1rem; }
+.pending-bar .pb-head .pb-n { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 99px; background: #fff; color: var(--fire); font-size: 1.05rem; }
+.pending-bar .pb-head .pb-all { margin-left: auto; font-size: .85rem; }
+.pending-bar .pb-item { padding: 12px 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.pending-bar .pb-item small { display: block; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+.tab .tn { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: var(--fire); color: #fff; font-size: .8rem; }
+.tab.on .tn { background: #fff; color: var(--fire); }
+.modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.5); }
+.modal[hidden] { display: none; }
+.modal-card { width: min(100%, 420px); padding: 22px; border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.modal-card h3 { margin: 0 0 10px; }
+.modal-card p { margin: 0 0 10px; line-height: 1.6; }
+.modal-card .cm-info { padding: 10px 12px; border-radius: 10px; background: var(--bg); font-weight: 700; font-size: .92rem; }
+.modal-card .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
 .chk { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
 .chk input { width: 20px; height: 20px; flex: none; }
 .chk .hint { font-weight: 400; }
@@ -391,7 +406,16 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <div id="loginMsg"></div>
     </div>
 
+  <div id="confirmModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+    <div class="modal-card">
+      <h3 id="cmTitle"></h3>
+      <p id="cmBody"></p>
+      <p id="cmInfo" class="cm-info"></p>
+      <div class="actions"><button type="button" class="btn small ghost" id="cmNo">返回</button><button type="button" class="btn small ok" id="cmOk">確定</button></div>
+    </div>
+  </div>
     <div id="app" hidden>
+      <div id="pendingBar" class="pending-bar" hidden></div>
       <div class="admin-bar">
         <div class="tabs" role="tablist">
           <button class="tab on" data-tab="cal" type="button">日曆總覽</button>
@@ -664,12 +688,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
 
   function actionsHtml(b) {
     var a = [];
-    if (b.status !== 'confirmed' && b.status !== 'cancelled') a.push('<button type="button" class="btn small ok" data-act="status" data-to="confirmed" data-id="' + b.id + '">設為已預約</button>');
-    if (b.status !== 'hold' && b.status !== 'cancelled') a.push('<button type="button" class="btn small hold" data-act="status" data-to="hold" data-id="' + b.id + '">轉為保留</button>');
-    if (b.status === 'cancelled') a.push('<button type="button" class="btn small ghost" data-act="status" data-to="confirmed" data-id="' + b.id + '">恢復為已預約</button>');
-    else a.push('<button type="button" class="btn small ghost" data-act="status" data-to="cancelled" data-id="' + b.id + '">取消並釋出</button>');
-    a.push('<button type="button" class="btn small danger" data-act="del" data-id="' + b.id + '">刪除</button>');
-    return '<div class="actions">' + a.join('') + '</div>';
+    if (b.status !== 'confirmed') a.push('<button type="button" class="btn small ok" data-act="status" data-to="confirmed" data-id="' + b.id + '">確認預約</button>');
+    if (b.status !== 'cancelled') a.push('<button type="button" class="btn small ghost" data-act="status" data-to="cancelled" data-id="' + b.id + '">取消並釋出</button>');
+    return a.length ? '<div class="actions">' + a.join('') + '</div>' : '';
   }
 
   function editHtml(b) {
@@ -725,7 +746,27 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     }).join('') : '<tr><td colspan="6">沒有資料</td></tr>';
   }
 
-  function renderAll() { renderCal(); renderDay(); renderList(); updatePreview(); }
+  // ---------- 最上方的「待確認訂單」提醒 ----------
+  function renderPending() {
+    var list = bookings.filter(function (b) { return b.status === 'pending'; })
+      .sort(function (a, b) { return a.check_in < b.check_in ? -1 : a.check_in > b.check_in ? 1 : 0; });
+    var bar = $('#pendingBar'), n = list.length;
+    document.title = (n ? '(' + n + ') ' : '') + '營主後台｜南窩綠丘';
+    var tab = document.querySelector('.tab[data-tab="list"]');
+    if (tab) tab.innerHTML = '預約清單' + (n ? '<span class="tn">' + n + '</span>' : '');
+    if (!n) { bar.hidden = true; bar.innerHTML = ''; return; }
+    var show = list.slice(0, 3);
+    bar.innerHTML = '<div class="pb-head"><span>⚠ 待確認訂單</span><span class="pb-n">' + n + '</span><span>筆，請盡快處理</span>' +
+      (n > show.length ? '<button type="button" class="btn small ghost pb-all" data-act="showpending">看全部 ' + n + ' 筆</button>' : '') + '</div>' +
+      show.map(function (b) {
+        return '<div class="pb-item"><div>' + infoHtml(b) + '</div><div class="actions">' +
+          '<button type="button" class="btn small ok" data-act="status" data-to="confirmed" data-id="' + b.id + '">確認預約</button>' +
+          '<button type="button" class="btn small ghost" data-act="status" data-to="cancelled" data-id="' + b.id + '">取消並釋出</button></div></div>';
+      }).join('');
+    bar.hidden = false;
+  }
+
+  function renderAll() { renderPending(); renderCal(); renderDay(); renderList(); updatePreview(); }
 
   // ---------- 新增表單 ----------
   function selectedZones() { return $$('#f_zones input:checked').map(function (c) { return c.value; }); }
@@ -771,6 +812,47 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   }
 
   // ---------- 動作（狀態 / 儲存 / 刪除 / 帶入表單）----------
+  // 實際送出狀態變更（已經過確認視窗）
+  function doStatus(id, to, out) {
+    return api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: { status: to } })
+        .then(function (r) { return load().then(function () { return r; }); })
+        .then(function (r) {
+          out.innerHTML = '';
+          var n = r && r.notify;
+          if (!n) return;
+          if (n.already) return msg(out, 'warn', '這筆原本就是「已預約」，所以沒有再通知客人。');
+          var L = n.line, E = n.email, parts = [];
+          if (L === 'sent') parts.push('✅ 已用 LINE 通知客人。');
+          else if (L === 'not_linked') parts.push('ℹ️ 客人還沒綁定 LINE（沒有傳預約代碼給官方帳號），所以沒有 LINE 通知。');
+          else if (L === 'not_configured') parts.push('ℹ️ 後端尚未設定 LINE 通知，所以沒有傳 LINE。');
+          else parts.push('❌ LINE 通知失敗：' + L.replace('failed: ', '') + '（可能是權杖失效，或本月免費訊息數已用完）');
+          if (E === 'sent') parts.push('✅ 已寄 Email 給客人。');
+          else if (E !== 'skipped') parts.push('❌ Email 失敗：' + E.replace('failed: ', ''));
+          msg(out, /❌/.test(parts.join('')) ? 'err' : (L === 'sent' || E === 'sent' ? 'ok' : 'warn'), parts.join('\n'));
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        })
+        .catch(function (er) { msg(out, 'err', er.message); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  }
+
+  // 確認視窗：回傳 Promise<boolean>
+  function askConfirm(cfg) {
+    return new Promise(function (resolve) {
+      var m = $('#confirmModal');
+      $('#cmTitle').textContent = cfg.title;
+      $('#cmBody').textContent = cfg.body;
+      $('#cmInfo').textContent = cfg.info || '';
+      var ok = $('#cmOk'), no = $('#cmNo');
+      ok.textContent = cfg.ok || '確定'; ok.className = 'btn small ' + (cfg.danger ? 'danger' : 'ok');
+      m.hidden = false; no.focus();
+      function done(v) { m.hidden = true; ok.onclick = no.onclick = m.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); }
+      function onKey(e) { if (e.key === 'Escape') done(false); }
+      ok.onclick = function () { done(true); };
+      no.onclick = function () { done(false); };
+      m.onclick = function (e) { if (e.target === m) done(false); };
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act], [data-date], .tab');
     if (!t) return;
@@ -781,6 +863,13 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     }
     if (t.hasAttribute('data-date')) { selDate = t.getAttribute('data-date'); renderCal(); renderDay(); return; }
     var act = t.getAttribute('data-act'), id = t.getAttribute('data-id'), out = $('#appMsg');
+    if (act === 'showpending') {
+      $$('.tab').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-tab') === 'list'); });
+      $$('.pane').forEach(function (p) { p.hidden = p.id !== 'pane-list'; });
+      $('#l_status').value = 'pending'; renderList();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (act === 'prefill') {
       $('#f_status').value = t.getAttribute('data-type'); syncType();
       $$('#f_zones input').forEach(function (c) { c.checked = c.value === (t.getAttribute('data-zone') === 'B' ? 'B2' : t.getAttribute('data-zone')); });
@@ -791,33 +880,14 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       return;
     }
     if (act === 'status') {
-      api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: { status: t.getAttribute('data-to') } })
-        .then(function (r) { return load().then(function () { return r; }); })
-        .then(function (r) {
-          out.innerHTML = '';
-          var n = r && r.notify;
-          if (!n) return;
-          if (n.already) return msg(out, 'warn', '這筆原本就是「已預約」，所以沒有再通知客人。');
-          var L = n.line, E = n.email, parts = [];
-          if (L === 'sent') parts.push('✅ 已用 LINE 通知客人。');
-          else if (L === 'not_linked') parts.push('ℹ️ 客人還沒綁定 LINE（沒有傳預約代碼給官方帳號），所以沒有 LINE 通知。');
-          else if (L === 'not_configured') parts.push('❌ 後端沒有設定 LINE_CHANNEL_TOKEN，無法傳 LINE。');
-          else parts.push('❌ LINE 通知失敗：' + L.replace('failed: ', '') + '（可能是權杖失效，或本月免費訊息數已用完）');
-          if (E === 'sent') parts.push('✅ 已寄 Email 給客人。');
-          else if (E !== 'skipped') parts.push('❌ Email 失敗：' + E.replace('failed: ', ''));
-          msg(out, /❌/.test(parts.join('')) ? 'err' : (L === 'sent' || E === 'sent' ? 'ok' : 'warn'), parts.join('\n'));
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        })
-        .catch(function (er) { msg(out, 'err', er.message); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-      return;
-    }
-    if (act === 'del') {
-      if (t.getAttribute('data-armed') !== '1') {
-        t.setAttribute('data-armed', '1'); t.textContent = '再按一次確認刪除';
-        setTimeout(function () { t.removeAttribute('data-armed'); t.textContent = '刪除'; }, 4000);
-        return;
-      }
-      api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'DELETE' }).then(load).catch(function (er) { msg(out, 'err', er.message); });
+      var to = t.getAttribute('data-to');
+      var bk = bookings.filter(function (x) { return x.id === id; })[0];
+      var info = bk ? bk.name + '｜' + bk.check_in + ' → ' + bk.check_out + '（' + bk.nights + ' 晚）｜' + bk.zones.join('、') + '｜' + money(bk.total) : id;
+      var cfg = to === 'confirmed'
+        ? { title: '確認這筆預約？', body: '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
+        : { title: '取消這筆預約？', body: '取消後，營位會立刻釋出，別人就可以預訂。這筆紀錄會保留，狀態變成「已取消」。', ok: '取消並釋出', danger: true };
+      cfg.info = info;
+      askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out); });
       return;
     }
     if (act === 'save') {
