@@ -565,6 +565,8 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
             <div class="field"><label>營區</label>
               <div class="zchecks" id="f_zones">
                 <label><input type="checkbox" value="A">A 區</label>
+                <label><input type="checkbox" value="A1">A1（半區）</label>
+                <label><input type="checkbox" value="A2">A2（半區）</label>
                 <label><input type="checkbox" value="B1">B 區 1帳</label>
                 <label><input type="checkbox" value="B2">B 區 2帳</label>
                 <label><input type="checkbox" value="C">C 區</label>
@@ -655,13 +657,14 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
             <li><code>2026/10/20 A,B</code>　→　10/20 這一晚，A 區和 B 區已被訂</li>
             <li><code>2026/10/20~10/22 A</code>　→　10/20、10/21、10/22 三晚，A 區已被訂</li>
             <li>沒寫年份就當作今年；B 就是整個 B 區（1帳、2帳都會一起鎖）。</li>
+            <li>A 區拆半（非包區）：寫 <code>A1</code> 或 <code>A2</code>，例如 <code>2027/3/20 A1</code>、<code>2027/3/20 A1,A2</code>。A 整區和 A1／A2 不能同一天一起鎖。</li>
             <li>營主自己要留的，營區寫 <code>營主保留</code>（或 <code>O</code>），例如 <code>2026/11/13~11/14 A,營主保留</code>。這個區只有後台能登記，客人網站看不到。</li>
           </ul>
           <p>也可以貼完整資料（從 Excel / Google 試算表複製整列，用 Tab 或逗號分隔）。每行一筆，欄位順序：</p>
           <p class="note" style="margin-top:-6px"><b>入營日、拔營日、營區、姓名、電話、狀態、帳數、金額、備註</b>　（後面幾欄可以不填）</p>
           <ul class="note">
             <li>日期可寫 <code>2027/2/5</code>、<code>2027-02-05</code> 或民國 <code>116/2/5</code>；拔營日是離開那天。</li>
-            <li>營區寫 <code>A</code>、<code>B1</code>、<code>B2</code>、<code>C</code>、<code>D</code>，多區用 <code>+</code> 連接，例如 <code>A+C</code>。</li>
+            <li>營區寫 <code>A</code>、<code>A1</code>、<code>A2</code>、<code>B1</code>、<code>B2</code>、<code>C</code>、<code>D</code>，多區用 <code>+</code> 連接，例如 <code>A+C</code>。</li>
             <li>狀態寫「已預約」「保留」「待確認」，沒寫就當作已預約。金額沒寫會依價目自動計算。</li>
             <li>先按「檢查」，會顯示每一行能不能匯入（日期衝突、格式錯誤都會指出），確認沒問題再按「匯入」。</li>
           </ul>
@@ -703,6 +706,11 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   var nightsBetween = function (a, b) { var o = []; if (!a || !b) return o; for (var d = a; d < b && o.length < 400; d = addDays(d, 1)) o.push(d); return o; };
   var ZONES = ['A', 'B', 'C', 'D', 'O'];
   var zoneChip = function (z) { return z === 'O' ? '留' : z; };
+  // 實體營區代號：A1/A2 各自獨立，其他取第一個字（B1/B2 都算 B）
+  var physOf = function (z) { return (z === 'A1' || z === 'A2') ? z : z.charAt(0); };
+  // 這個營區在 occ 裡要檢查哪些代號：A 整區與 A1／A2 互相衝突
+  var conflictKeys = function (p) { return p === 'A' ? ['A', 'A1', 'A2'] : p === 'A1' ? ['A1', 'A'] : p === 'A2' ? ['A2', 'A'] : [p]; };
+  var splitDays = {};   // 營主在日曆上按了「拆成 A1／A2」的日期
   var zoneName = function (z) { return z === 'O' ? '營主保留區' : z + '區'; };
   var ST = { confirmed: '已預約', pending: '待確認', hold: '保留', cancelled: '已取消' };
   var PEAK = ['2027-02-05', '2027-02-09'];
@@ -769,7 +777,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     occ = {};
     bookings.forEach(function (b) {
       if (b.status === 'cancelled') return;
-      var zs = []; b.zones.forEach(function (z) { var p = z.charAt(0); if (zs.indexOf(p) < 0) zs.push(p); });
+      var zs = []; b.zones.forEach(function (z) { var p = physOf(z); if (zs.indexOf(p) < 0) zs.push(p); });
       nightsBetween(b.check_in, b.check_out).forEach(function (d) {
         occ[d] = occ[d] || {};
         zs.forEach(function (z) { occ[d][z] = b; });
@@ -781,6 +789,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     });
   }
 
+  // 這天的 A 區是不是被拆成 A1／A2（有人登記了半區，或營主按了拆開）
+  function isSplit(date) { var o = occ[date] || {}; return !!(o.A1 || o.A2 || (splitDays[date] && !o.A)); }
+
   // ---------- 日曆 ----------
   function renderCal() {
     $('#mTitle').textContent = view.y + ' 年 ' + view.m + ' 月';
@@ -790,7 +801,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     for (var i = 0; i < first; i++) h += '<div></div>';
     for (var d = 1; d <= n; d++) {
       var date = view.y + '-' + pad(view.m) + '-' + pad(d);
-      var chips = ZONES.map(function (z) {
+      var zl = isSplit(date) ? ['A1', 'A2', 'B', 'C', 'D', 'O'] : ZONES;
+      var chips = zl.map(function (z) {
         var b = occ[date] && occ[date][z];
         return '<i class="chip ' + (b ? 'st-' + b.status : 'free') + '">' + zoneChip(z) + '</i>';
       }).join('');
@@ -827,11 +839,12 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   function renderDay() {
     var wd = ['日', '一', '二', '三', '四', '五', '六'][new Date(selDate + 'T00:00:00Z').getUTCDay()];
     var h = '<h3>' + esc(selDate) + '（' + wd + '）' + (selDate >= PEAK[0] && selDate <= PEAK[1] ? ' <span class="peak">春節專案價</span>' : '') + '</h3>';
-    ZONES.forEach(function (z) {
+    (isSplit(selDate) ? ['A1', 'A2', 'B', 'C', 'D', 'O'] : ZONES).forEach(function (z) {
       var b = occ[selDate] && occ[selDate][z];
       h += '<div class="zrow"><div class="zl">' + zoneName(z) + '</div><div class="zb">';
       if (!b) {
         h += '<div class="zfree">空位</div><div class="actions" style="margin-top:6px">' +
+          (z === 'A' ? '<button type="button" class="btn small ghost" data-act="splitA">拆成 A1／A2（非包區）</button>' : '') +
           '<button type="button" class="btn small hold" data-act="prefill" data-zone="' + z + '" data-type="hold">保留這區</button>' +
           '<button type="button" class="btn small ghost" data-act="prefill" data-zone="' + z + '" data-type="confirmed">登記預約</button></div>';
       } else {
@@ -947,9 +960,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     el.className = 'preview';
     if (!ci || !co || !zs.length) { el.textContent = ''; return; }
     if (co <= ci) { el.className = 'preview bad'; el.textContent = '拔營日須晚於入營日'; return; }
-    var phys = []; zs.forEach(function (z) { var p = z.charAt(0); if (phys.indexOf(p) < 0) phys.push(p); });
+    var phys = []; zs.forEach(function (z) { var p = physOf(z); if (phys.indexOf(p) < 0) phys.push(p); });
     var bad = [];
-    nightsBetween(ci, co).forEach(function (d) { phys.forEach(function (z) { var b = occ[d] && occ[d][z]; if (b) bad.push(z + '區 ' + d.slice(5) + ' 已被「' + b.name + '」' + ST[b.status]); }); });
+    nightsBetween(ci, co).forEach(function (d) { phys.forEach(function (z) { conflictKeys(z).forEach(function (k) { var b = occ[d] && occ[d][k]; if (b) bad.push(k + '區 ' + d.slice(5) + ' 已被「' + b.name + '」' + ST[b.status]); }); }); });
     if (bad.length) { el.className = 'preview bad'; el.textContent = '無法新增：' + bad.slice(0, 3).join('；') + (bad.length > 3 ? '…等 ' + bad.length + ' 處' : ''); }
     else { el.className = 'preview good'; el.textContent = '這段日期這些營區都是空的，共 ' + nightsBetween(ci, co).length + ' 晚。'; }
   }
@@ -1049,7 +1062,12 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       $$('.pane').forEach(function (p) { p.hidden = p.id !== 'pane-' + t.getAttribute('data-tab'); });
       return;
     }
-    if (t.hasAttribute('data-date')) { selDate = t.getAttribute('data-date'); renderCal(); renderDay(); return; }
+    if (t.hasAttribute('data-date')) {
+      selDate = t.getAttribute('data-date'); renderCal(); renderDay();
+      // 順便帶入下方「新增登記」的日期：入營日＝點的那天，拔營日＝隔天（要多晚再自己改拔營日）
+      $('#f_in').value = selDate; $('#f_out').value = addDays(selDate, 1); updatePreview();
+      return;
+    }
     var act = t.getAttribute('data-act'), id = t.getAttribute('data-id'), out = $('#appMsg');
     if (act === 'showpending') {
       $$('.tab').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-tab') === 'list'); });
@@ -1058,6 +1076,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    if (act === 'splitA') { splitDays[selDate] = true; renderCal(); renderDay(); return; }
     if (act === 'prefill') {
       $('#f_status').value = t.getAttribute('data-type'); syncType();
       $$('#f_zones input').forEach(function (c) { c.checked = c.value === (t.getAttribute('data-zone') === 'B' ? 'B2' : t.getAttribute('data-zone')); });
@@ -1150,7 +1169,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     var rows = [];
     text.split(/\r?\n/).forEach(function (line, i) {
       if (!line.trim()) return;
-      var q = line.replace(/[Ａ-Ｄａ-ｄ]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(QUICK);
+      var q = line.replace(/[Ａ-Ｄａ-ｄ０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); }).match(QUICK);
       if (q) {
         var d1 = quickDate(q[1]), d2 = q[2] ? quickDate(q[2]) : d1;
         var zs0 = parseZones(q[3], ''), err0 = '';
@@ -1316,6 +1335,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   $('#f_zones').addEventListener('change', function (e) {
     if (e.target.value === 'B1' && e.target.checked) $('#f_zones input[value="B2"]').checked = false;
     if (e.target.value === 'B2' && e.target.checked) $('#f_zones input[value="B1"]').checked = false;
+    if (e.target.value === 'A' && e.target.checked) { $('#f_zones input[value="A1"]').checked = false; $('#f_zones input[value="A2"]').checked = false; }
+    if ((e.target.value === 'A1' || e.target.value === 'A2') && e.target.checked) $('#f_zones input[value="A"]').checked = false;
     updatePreview();
   });
   $('#f_submit').addEventListener('click', submitEntry);
