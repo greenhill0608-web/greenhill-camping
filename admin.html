@@ -501,6 +501,30 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <div class="actions"><button type="button" class="btn small ghost" id="cmNo">返回</button><button type="button" class="btn small ok" id="cmOk">確定</button></div>
     </div>
   </div>
+  <div id="editModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="emTitle">
+    <div class="modal-card" style="max-height:90vh;overflow:auto">
+      <h3 id="emTitle">編輯預約</h3>
+      <p id="emInfo" class="cm-info"></p>
+      <div class="field"><label for="em_name">姓名</label><input type="text" id="em_name"></div>
+      <div class="field"><label for="em_phone">電話</label><input type="text" id="em_phone"></div>
+      <div class="field"><label>營區</label><div class="zchecks" id="em_zones">
+        <label><input type="checkbox" value="A">A 區</label>
+        <label><input type="checkbox" value="A1">A1（半區）</label>
+        <label><input type="checkbox" value="A2">A2（半區）</label>
+        <label><input type="checkbox" value="B1">B 區 1帳</label>
+        <label><input type="checkbox" value="B2">B 區 2帳</label>
+        <label><input type="checkbox" value="C">C 區</label>
+        <label><input type="checkbox" value="D">D 區</label>
+        <label><input type="checkbox" value="O">營主保留區</label>
+      </div></div>
+      <label class="chk" id="em_recalcWrap" hidden><input type="checkbox" id="em_recalc"><span>依新營區重新計算金額</span></label>
+      <div class="field"><label for="em_total">金額</label><input type="number" id="em_total" inputmode="numeric"></div>
+      <div id="em_holdWrap" class="field" hidden><label class="chk"><input type="checkbox" id="em_holdChk"> 設定保留期限</label><input type="date" id="em_hold"></div>
+      <div class="field"><label for="em_note">備註</label><textarea id="em_note" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--line,#ccc);font:inherit"></textarea></div>
+      <p id="em_err" class="hint" style="color:#b3261e;white-space:normal" hidden></p>
+      <div class="actions"><button type="button" class="btn small ghost" id="em_no">返回</button><button type="button" class="btn small ok" id="em_ok">儲存</button></div>
+    </div>
+  </div>
   <div id="lineModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="lmTitle">
     <div class="modal-card">
       <h3 id="lmTitle">傳 LINE 給客人</h3>
@@ -820,14 +844,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   }
 
   function editHtml(b) {
-    return '<details class="edit"><summary>編輯備註 / 金額' + (b.status === 'hold' ? ' / 保留到' : '') + '</summary><div class="editrow">' +
-      '<input type="text" data-f="name" value="' + esc(b.name) + '" aria-label="姓名" placeholder="姓名">' +
-      '<input type="text" data-f="phone" value="' + esc(b.phone === '-' ? '' : b.phone) + '" aria-label="電話" placeholder="電話">' +
-      '<input type="number" data-f="total" value="' + b.total + '" aria-label="金額" placeholder="金額">' +
-      (b.status === 'hold' ? '<label class="chk"><input type="checkbox" data-untilchk' + (b.hold_until ? ' checked' : '') + '> 設定保留期限</label>' +
-        '<input type="date" data-f="hold_until" value="' + esc(b.hold_until || '') + '" aria-label="保留到"' + (b.hold_until ? '' : ' hidden') + '>' : '') +
-      '<input type="text" data-f="note" value="' + esc(b.note || '') + '" aria-label="備註" placeholder="備註">' +
-      '<button type="button" class="btn small" data-act="save" data-id="' + b.id + '">儲存</button></div></details>';
+    return '<div style="margin-top:6px"><button type="button" class="btn small ghost" data-act="edit" data-id="' + b.id + '">✏️ 編輯</button></div>';
   }
 
   function infoHtml(b) {
@@ -844,7 +861,8 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       h += '<div class="zrow"><div class="zl">' + zoneName(z) + '</div><div class="zb">';
       if (!b) {
         h += '<div class="zfree">空位</div><div class="actions" style="margin-top:6px">' +
-          (z === 'A' ? '<button type="button" class="btn small ghost" data-act="splitA">拆成 A1／A2（非包區）</button>' : '') +
+          (z === 'A' ? '<button type="button" class="btn small ghost" data-act="splitA">拆賣 A1／A2（客人也能訂，非包區）</button>' : '') +
+          (z === 'A1' && splitDays[selDate] && !(occ[selDate] && (occ[selDate].A1 || occ[selDate].A2)) ? '<button type="button" class="btn small ghost" data-act="unsplitA">取消拆賣，恢復 A 整區</button>' : '') +
           '<button type="button" class="btn small hold" data-act="prefill" data-zone="' + z + '" data-type="hold">保留這區</button>' +
           '<button type="button" class="btn small ghost" data-act="prefill" data-zone="' + z + '" data-type="confirmed">登記預約</button></div>';
       } else {
@@ -1076,7 +1094,14 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (act === 'splitA') { splitDays[selDate] = true; renderCal(); renderDay(); return; }
+    if (act === 'splitA' || act === 'unsplitA') {
+      var on = act === 'splitA';
+      api('/api/admin/split', { method: 'POST', body: { date: selDate, on: on } }).then(function () {
+        if (on) splitDays[selDate] = true; else delete splitDays[selDate];
+        renderCal(); renderDay();
+      }).catch(function (e) { alert(e.message || '設定失敗'); });
+      return;
+    }
     if (act === 'prefill') {
       $('#f_status').value = t.getAttribute('data-type'); syncType();
       $$('#f_zones input').forEach(function (c) { c.checked = c.value === (t.getAttribute('data-zone') === 'B' ? 'B2' : t.getAttribute('data-zone')); });
@@ -1112,23 +1137,56 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out, to === 'cancelled' && askConfirm.checked, rushAsk ? askConfirm.checked : undefined, rushAsk ? askConfirm.num : ''); });
       return;
     }
-    if (act === 'save') {
-      var box = t.closest('.editrow'), body = {};
-      Array.prototype.forEach.call(box.querySelectorAll('[data-f]'), function (i) { body[i.getAttribute('data-f')] = i.value; });
-      var uc = box.querySelector('[data-untilchk]');
-      if (uc && !uc.checked) body.hold_until = ''; // 沒勾＝不設期限
-      api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: body })
-        .then(load).then(function () { msg(out, 'ok', '已儲存。'); }).catch(function (er) { msg(out, 'err', er.message); });
-    }
+    if (act === 'edit') { openEdit(id, out); return; }
   });
 
-  document.addEventListener('change', function (e) {
-    var c = e.target;
-    if (!c || !c.hasAttribute || !c.hasAttribute('data-untilchk')) return;
-    var d = c.closest('.editrow').querySelector('[data-f="hold_until"]');
-    if (!d) return;
-    d.hidden = !c.checked;
-    if (c.checked && !d.value) d.value = addDays(today, 3);
+  // ---------- 編輯視窗 ----------
+  var editCtx = null;
+  function openEdit(id, out) {
+    var bk = bookings.filter(function (x) { return x.id === id; })[0];
+    if (!bk) return;
+    editCtx = { bk: bk, out: out };
+    $('#emInfo').textContent = bk.check_in + ' → ' + bk.check_out + '（' + bk.nights + ' 晚）｜' + bk.id;
+    $('#em_name').value = bk.name; $('#em_phone').value = bk.phone === '-' ? '' : bk.phone;
+    $('#em_total').value = bk.total; $('#em_note').value = bk.note || '';
+    $$('#em_zones input').forEach(function (c) { c.checked = bk.zones.indexOf(c.value) !== -1; });
+    $('#em_recalc').checked = false; $('#em_recalcWrap').hidden = true;
+    $('#em_holdWrap').hidden = bk.status !== 'hold';
+    $('#em_holdChk').checked = !!bk.hold_until; $('#em_hold').value = bk.hold_until || ''; $('#em_hold').hidden = !bk.hold_until;
+    $('#em_err').hidden = true;
+    $('#editModal').hidden = false;
+  }
+  function closeEdit() { $('#editModal').hidden = true; editCtx = null; }
+  $('#em_zones').addEventListener('change', function (e) {
+    var c = e.target, z = function (v) { return $('#em_zones input[value="' + v + '"]'); };
+    if (c.checked) {
+      if (c.value === 'B1') z('B2').checked = false;
+      if (c.value === 'B2') z('B1').checked = false;
+      if (c.value === 'A') { z('A1').checked = false; z('A2').checked = false; }
+      if (c.value === 'A1' || c.value === 'A2') z('A').checked = false;
+    }
+    var now = $$('#em_zones input:checked').map(function (x) { return x.value; }).sort().join(',');
+    $('#em_recalcWrap').hidden = !editCtx || now === editCtx.bk.zones.slice().sort().join(',');
+  });
+  $('#em_holdChk').addEventListener('change', function () {
+    $('#em_hold').hidden = !this.checked;
+    if (this.checked && !$('#em_hold').value) $('#em_hold').value = addDays(today, 3);
+  });
+  $('#em_no').addEventListener('click', closeEdit);
+  $('#editModal').addEventListener('click', function (e) { if (e.target === $('#editModal')) closeEdit(); });
+  $('#em_ok').addEventListener('click', function () {
+    if (!editCtx) return;
+    var bk = editCtx.bk, out = editCtx.out, er = $('#em_err');
+    var zones = $$('#em_zones input:checked').map(function (c) { return c.value; });
+    if (!zones.length) { er.textContent = '請至少選一個營區'; er.hidden = false; return; }
+    var body = { name: $('#em_name').value, phone: $('#em_phone').value, total: $('#em_total').value, note: $('#em_note').value };
+    if (bk.status === 'hold') body.hold_until = $('#em_holdChk').checked ? $('#em_hold').value : '';
+    if (zones.slice().sort().join(',') !== bk.zones.slice().sort().join(',')) { body.zones = zones; if ($('#em_recalc').checked) body.recalc = true; }
+    $('#em_ok').disabled = true;
+    api('/api/admin/bookings/' + encodeURIComponent(bk.id), { method: 'PATCH', body: body })
+      .then(load).then(function () { closeEdit(); if (out) msg(out, 'ok', '已儲存。'); })
+      .catch(function (e2) { er.textContent = e2.message || '儲存失敗'; er.hidden = false; })
+      .then(function () { $('#em_ok').disabled = false; });
   });
 
   // ---------- 批次匯入 ----------
@@ -1247,7 +1305,11 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
     if (openUntil) $('#s_until').value = openUntil;
   }
   function loadSettings() {
-    api('/api/admin/settings').then(function (d) { openUntil = d.open_until || ''; showOpenStatus(); }).catch(function () {});
+    api('/api/admin/settings').then(function (d) {
+      openUntil = d.open_until || ''; showOpenStatus();
+      splitDays = {}; (d.split_days || []).forEach(function (x) { splitDays[x] = true; });
+      if (typeof renderCal === 'function' && $('#dayPanel')) { try { renderCal(); renderDay(); } catch (e) {} }
+    }).catch(function () {});
   }
   $('#s_limit').addEventListener('change', function () {
     $('#s_wrap').hidden = !$('#s_limit').checked;
