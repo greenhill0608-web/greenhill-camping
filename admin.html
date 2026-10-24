@@ -295,6 +295,86 @@ td .sub { color: var(--muted); font-size: .82rem; }
 .cal-day.closed { opacity: .4; cursor: not-allowed; }
 .cal-day.closed:not(:disabled) { opacity: .85; cursor: pointer; }
 
+/* ---------- 營區配置圖 ---------- */
+.cm { margin-top: 44px; --cm-zone: #6b4a8c; --cm-f1: #1f78b4; --cm-f2: #0f9d8a; --cm-f3: #b9822a; --cm-wc: #c0562b; }
+@media (prefers-color-scheme: dark) { .cm { --cm-zone: #b79ad6; --cm-f1: #5fb0e6; --cm-f2: #3ccab5; --cm-f3: #e0b15c; --cm-wc: #ee8a5e; } }
+.cm-h { margin: 2px 0 4px; font-size: 1.35rem; }
+.cm-lead { margin: 0 0 12px; color: var(--muted); }
+.cm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.cm-chip { border: 1.5px solid var(--brand); background: transparent; color: var(--brand); border-radius: 99px; padding: 6px 14px; font: inherit; font-weight: 700; font-size: .88rem; cursor: pointer; }
+.cm-chip[aria-pressed="true"] { background: var(--brand); color: var(--bg); }
+.cm-chip.cm-zoom { margin-left: auto; background: var(--brand); color: var(--bg); }
+.cm-card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); padding: 10px; }
+.cm-scroller { overflow-x: auto; border-radius: 12px; -webkit-overflow-scrolling: touch; }
+.cm-scroller.zoom { overflow: auto; max-height: 78vh; }
+.cm-map { position: relative; width: 100%; aspect-ratio: 885 / 591; user-select: none; }
+.cm-map img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cm-scroller.zoom .cm-map { width: max(230%, 1150px); min-width: 0; }
+@media (max-width: 700px) { .cm-map { min-width: 700px; } }
+.cm-swipe { display: none; margin: 6px 4px 0; color: var(--muted); font-size: .82rem; }
+@media (max-width: 700px) { .cm-swipe { display: block; } }
+.cm-pin { position: absolute; transform: translate(-50%, -50%); z-index: 3; border: 0; padding: 0; cursor: pointer; font: inherit; display: grid; place-items: center; color: #fff; transition: opacity .2s, transform .15s; }
+.cm-pin:hover, .cm-pin.on { transform: translate(-50%, -50%) scale(1.15); z-index: 5; }
+.cm-pin.dim { opacity: .12; pointer-events: none; }
+.cm-pin.zone { width: clamp(24px, 3.9vw, 36px); aspect-ratio: 1; border-radius: 50%; background: var(--cm-zone); font-weight: 800; font-size: clamp(.72rem, 1.7vw, .98rem); box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.4); }
+.cm-pin.zone::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--cm-zone); opacity: .55; animation: cmPulse 2.2s infinite; }
+@keyframes cmPulse { 0% { transform: scale(.85); opacity: .7; } 100% { transform: scale(1.35); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cm-pin.zone::before { animation: none; } }
+.cm-pin.fridge, .cm-pin.wc { width: clamp(21px, 3.3vw, 31px); aspect-ratio: 1; border-radius: 9px; font-size: clamp(.7rem, 1.8vw, 1rem); box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.4); }
+.cm-pin.wc { background: var(--cm-wc); }
+.cm-pin.f1 { background: var(--cm-f1); } .cm-pin.f2 { background: var(--cm-f2); } .cm-pin.f3 { background: var(--cm-f3); }
+.cm-tag { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; background: rgba(255,255,255,.95); color: #222; border-radius: 6px; padding: 0 6px; font-size: clamp(.55rem, 1.25vw, .68rem); font-weight: 700; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.cm-links { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; transition: opacity .2s; }
+.cm-links line { vector-effect: non-scaling-stroke; stroke: #fff; stroke-width: 1.8; stroke-dasharray: 6 5; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.cm-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 4px 4px; font-size: .86rem; color: var(--muted); }
+.cm-legend i { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; font-style: normal; font-size: .78rem; color: #fff; margin-right: 5px; vertical-align: -4px; }
+.cm-legend .z { background: var(--cm-zone); border-radius: 50%; } .cm-legend .w { background: var(--cm-wc); }
+.cm-legend .f1 { background: var(--cm-f1); } .cm-legend .f2 { background: var(--cm-f2); } .cm-legend .f3 { background: var(--cm-f3); }
+.cm-info { margin-top: 14px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); padding: 14px 18px; border-left: 6px solid var(--brand); min-height: 84px; }
+.cm-info b { font-size: 1.05rem; }
+.cm-info p { margin: 4px 0 0; color: var(--muted); }
+.cm-cards { margin-top: 14px; }
+.car-dots + .scale { margin-top: 22px; }
+
+/* ---------- 分頁版面：一次只顯示一個主題 ---------- */
+body[data-tab="book"] [data-t]:not([data-t="book"]),
+body[data-tab="camp"] [data-t]:not([data-t="camp"]),
+body[data-tab="know"] [data-t]:not([data-t="know"]),
+body[data-tab="lookup"] [data-t]:not([data-t="lookup"]) { display: none; }
+.nav ul.tabs-top a { padding: 6px 2px; border-bottom: 3px solid transparent; }
+.nav ul.tabs-top a[aria-current="page"] { border-bottom-color: var(--fire); color: var(--brand); font-weight: 700; }
+.tabbar { display: none; }
+section { padding-block: 40px; }
+.hero { padding-block: 44px 72px; }
+.hero h1 { font-size: clamp(2.2rem, 8vw, 3.6rem); }
+.hero p { margin-bottom: 1.2em; }
+@media (max-width: 640px) {
+  .nav .tabs-top { display: none; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--nav-bg); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
+  .tabbar a { display: grid; justify-items: center; gap: 1px; padding: 8px 2px 7px; color: var(--muted); text-decoration: none; font-size: .72rem; font-weight: 700; border-top: 3px solid transparent; }
+  .tabbar a i { font-style: normal; font-size: 1.25rem; line-height: 1.2; }
+  .tabbar a[aria-current="page"] { color: var(--brand); border-top-color: var(--fire); }
+  body { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+  .line-fab { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ---------- 選完入營日的提醒 / 夜衝選項 ---------- */
+.pk { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.45); }
+.pk[hidden] { display: none; }
+.pk-card { width: min(100%, 360px); text-align: center; background: var(--surface); border-radius: 20px; padding: 26px 22px 22px; box-shadow: 0 16px 48px rgba(0,0,0,.4); animation: pkIn .22s ease-out; }
+.pk-ic { font-size: 2.6rem; line-height: 1; }
+.pk-card h3 { margin: 10px 0 6px; font-size: 1.25rem; color: var(--brand); }
+.pk-card p { margin: 0 0 16px; line-height: 1.7; }
+.pk-card small { color: var(--muted); }
+.pk-card .btn { width: 100%; }
+@keyframes pkIn { from { transform: translateY(14px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+.cal-foot .need { display: inline-block; font-weight: 700; color: var(--fire); animation: needPulse 1.4s ease-in-out 3; }
+@keyframes needPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .pk-card, .cal-foot .need { animation: none; } }
+.opt { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-top: 8px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--bg); cursor: pointer; }
+.opt input { width: 20px; height: 20px; flex: none; accent-color: var(--fire); }
+.opt:has(input:checked) { border-color: var(--fire); background: var(--warn-bg); }
+
 </style>
 <style>
 :root { --hold-bg: #e1ebf8; --hold-ink: #1f4a85; --hold-solid: #3b6fb6; --free-line: #c3ccbd; }
@@ -378,7 +458,7 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
 .modal[hidden] { display: none; }
 .modal-card { width: min(100%, 420px); padding: 22px; border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
 .modal-card h3 { margin: 0 0 10px; }
-.modal-card p { margin: 0 0 10px; line-height: 1.6; }
+.modal-card p { margin: 0 0 10px; line-height: 1.6; white-space: pre-line; }
 .modal-card .cm-info { padding: 10px 12px; border-radius: 10px; background: var(--bg); font-weight: 700; font-size: .92rem; }
 .modal-card .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
 .contact { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
@@ -733,7 +813,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   }
 
   function infoHtml(b) {
-    return '<span class="pill st-' + b.status + '">' + ST[b.status] + '</span> <strong>' + esc(b.name) + '</strong>' + (b.phone && b.phone !== '-' ? ' ' + esc(b.phone) : '') +
+    return (/夜衝/.test(b.note || '') ? '<span class="pill" style="background:#b85f17;color:#fff">夜衝申請</span> ' : '') + '<span class="pill st-' + b.status + '">' + ST[b.status] + '</span> <strong>' + esc(b.name) + '</strong>' + (b.phone && b.phone !== '-' ? ' ' + esc(b.phone) : '') +
       '<small>' + esc(b.check_in) + ' → ' + esc(b.check_out) + '（' + b.nights + ' 晚）｜' + esc(b.zones.join('、')) + (b.tents ? '｜' + b.tents + ' 帳' : '') + '｜' + money(b.total) +
       (b.hold_until ? '｜保留到 ' + esc(b.hold_until) : '') + (b.note ? '｜' + esc(b.note) : '') + '｜' + esc(b.id) + (b.created_at && b.status === 'pending' ? '｜網站送出' : '') + '</small>';
   }
@@ -822,7 +902,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       return '<div class="sub">接收 ' + s.slice(5, 10) + ' ' + s.slice(11, 16) + '</div>';
     }
     $('#l_rows').innerHTML = rows.length ? rows.map(function (b) {
-      return '<tr><td><span class="pill st-' + b.status + '">' + ST[b.status] + '</span></td>' +
+      return '<tr><td>' + (/夜衝/.test(b.note || '') ? '<span class="pill" style="background:#b85f17;color:#fff;margin-bottom:4px">夜衝</span><br>' : '') + '<span class="pill st-' + b.status + '">' + ST[b.status] + '</span></td>' +
         '<td>' + esc(b.check_in) + '<div class="sub">→ ' + esc(b.check_out) + '（' + b.nights + ' 晚）</div>' + recv(b) + '</td>' +
         '<td>' + esc(b.zones.join('、')) + (b.tents ? '<div class="sub">' + b.tents + ' 帳</div>' : '') + '</td>' +
         '<td>' + esc(b.name) + '<div class="sub">' + esc(b.phone === '-' ? '' : b.phone) + (b.hold_until ? ' 保留到 ' + esc(b.hold_until) : '') + (b.note ? ' ｜ ' + esc(b.note) : '') + '</div>' + contactHtml(b) + '</td>' +
@@ -977,7 +1057,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       var bk = bookings.filter(function (x) { return x.id === id; })[0];
       var info = bk ? bk.name + '｜' + bk.check_in + ' → ' + bk.check_out + '（' + bk.nights + ' 晚）｜' + bk.zones.join('、') + '｜' + money(bk.total) : id;
       var cfg = to === 'confirmed'
-        ? { title: '確認這筆預約？', body: '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
+        ? { title: '確認這筆預約？', body: (bk && /夜衝/.test(bk.note || '') ? '⚠ 這筆客人有申請夜衝，請確認你已經回覆並同意。\n' : '') + '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
         : { title: '取消這筆預約？', body: '取消後，營位會立刻釋出，別人就可以預訂。這筆紀錄會保留，狀態變成「已取消」。', ok: '取消並釋出', danger: true };
       cfg.info = info;
       if (to === 'cancelled' && bk) {
