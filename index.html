@@ -594,7 +594,7 @@ section { padding-block: 40px; }
           <h3>5. 是否申請夜衝？</h3>
           <label class="opt"><input type="radio" name="nightRush" value="0" checked><span><b>否</b>　一般入營</span></label>
           <label class="opt"><input type="radio" name="nightRush" value="1"><span><b>是</b>　我想申請夜衝</span></label>
-          <p class="hint" id="nightHint" style="margin:8px 0 0">夜衝需等營主確認後回覆，確認前請先不要當作已安排。</p>
+          <p class="hint" id="nightHint" style="margin:8px 0 0">夜衝需等營主確認後回覆，並由營主另行報價（費用不含在上方試算）。確認前請先不要當作已安排。</p>
         </div>
       </div>
 
@@ -1262,7 +1262,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         '<p><a class="btn line" href="' + lineBindUrl(data.id) + '" target="_blank" rel="noopener">傳到 LINE，確認後自動通知我</a></p>' +
         '<p class="muted" style="font-size:.85rem">按按鈕後會開啟 LINE，已帶好預約代碼，按「傳送」就完成，之後確認或取消都會在 LINE 通知您。</p>' +
         '<p>請截圖或記下代碼，之後可在下方「查詢 / 取消我的預約」用手機號碼查詢進度或取消。目前狀態為 <span class="status pending">待確認</span>，營主確認後會與您聯絡。</p>' +
-        (data.night_rush ? '<p class="alert warn">您已申請<b>夜衝</b>，需等營主確認後回覆；確認前請先不要當作已安排。</p>' : '') +
+        (data.night_rush ? '<p class="alert warn">您已申請<b>夜衝</b>，需等營主確認後回覆，費用由營主另行報價（不含在上方合計）；確認前請先不要當作已安排。</p>' : '') +
         data.breakdown.map(lineHtml).join('') +
         '<div class="sum-total"><span>合計</span><span>' + money(data.total) + '</span></div>' +
         '<p style="margin-top:16px"><button type="button" class="btn ghost small" id="againBtn">再預約一筆</button></p></div>';

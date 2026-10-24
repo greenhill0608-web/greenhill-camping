@@ -496,6 +496,8 @@ textarea.mono { font: 500 .85rem/1.6 var(--mono); min-height: 170px; white-space
       <p id="cmBody"></p>
       <p id="cmInfo" class="cm-info"></p>
       <label id="cmChkWrap" class="chk" style="margin-top:10px" hidden><input type="checkbox" id="cmChk"><span id="cmChkTxt"></span></label>
+      <div id="cmNumWrap" class="field" style="margin:10px 0 0" hidden><label for="cmNum" id="cmNumLbl"></label><input type="number" id="cmNum" min="0" step="1" inputmode="numeric" placeholder="例如 1500；不收費請填 0"></div>
+      <p id="cmErr" class="hint" style="margin:6px 0 0;color:#b3261e;white-space:normal" hidden></p>
       <div class="actions"><button type="button" class="btn small ghost" id="cmNo">返回</button><button type="button" class="btn small ok" id="cmOk">確定</button></div>
     </div>
   </div>
@@ -772,6 +774,10 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
         occ[d] = occ[d] || {};
         zs.forEach(function (z) { occ[d][z] = b; });
       });
+      if (/【夜衝已同意】/.test(b.note || '')) {   // 夜衝：前一晚也算被這筆佔用
+        var pd = addDays(b.check_in, -1); occ[pd] = occ[pd] || {};
+        zs.forEach(function (z) { occ[pd][z] = b; });
+      }
     });
   }
 
@@ -813,7 +819,7 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
   }
 
   function infoHtml(b) {
-    return (/夜衝/.test(b.note || '') ? '<span class="pill" style="background:#b85f17;color:#fff">夜衝申請</span> ' : '') + '<span class="pill st-' + b.status + '">' + ST[b.status] + '</span> <strong>' + esc(b.name) + '</strong>' + (b.phone && b.phone !== '-' ? ' ' + esc(b.phone) : '') +
+    return ((/【夜衝已同意】/.test(b.note || '') ? '<span class="pill" style="background:#2c4a37;color:#fff">夜衝已同意</span> ' : /【申請夜衝】/.test(b.note || '') ? '<span class="pill" style="background:#b85f17;color:#fff">夜衝申請</span> ' : '')) + '<span class="pill st-' + b.status + '">' + ST[b.status] + '</span> <strong>' + esc(b.name) + '</strong>' + (b.phone && b.phone !== '-' ? ' ' + esc(b.phone) : '') +
       '<small>' + esc(b.check_in) + ' → ' + esc(b.check_out) + '（' + b.nights + ' 晚）｜' + esc(b.zones.join('、')) + (b.tents ? '｜' + b.tents + ' 帳' : '') + '｜' + money(b.total) +
       (b.hold_until ? '｜保留到 ' + esc(b.hold_until) : '') + (b.note ? '｜' + esc(b.note) : '') + '｜' + esc(b.id) + (b.created_at && b.status === 'pending' ? '｜網站送出' : '') + '</small>';
   }
@@ -977,8 +983,9 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
 
   // ---------- 動作（狀態 / 儲存 / 刪除 / 帶入表單）----------
   // 實際送出狀態變更（已經過確認視窗）
-  function doStatus(id, to, out, notifyCustomer) {
+  function doStatus(id, to, out, notifyCustomer, approveRush, rushFee) {
     var body = { status: to }; if (notifyCustomer) body.notify_customer = true;
+    if (to === 'confirmed' && approveRush !== undefined) { body.approve_night_rush = !!approveRush; if (approveRush) body.rush_fee = Number(rushFee || 0); }
     return api('/api/admin/bookings/' + encodeURIComponent(id), { method: 'PATCH', body: body })
         .then(function (r) { return load().then(function () { return r; }); })
         .then(function (r) {
@@ -1009,12 +1016,25 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       var cw = $('#cmChkWrap'), cc = $('#cmChk');
       cw.hidden = !cfg.check;
       if (cfg.check) { $('#cmChkTxt').textContent = cfg.check.label; cc.checked = !!cfg.check.checked; cc.disabled = !!cfg.check.disabled; }
+      var nw = $('#cmNumWrap'), nn = $('#cmNum'), er = $('#cmErr');
+      er.hidden = true; nn.value = '';
+      function syncNum() { nw.hidden = !(cfg.num && cc.checked); }
+      if (cfg.num) $('#cmNumLbl').textContent = cfg.num.label;
+      syncNum(); cc.onchange = syncNum;
       var ok = $('#cmOk'), no = $('#cmNo');
       ok.textContent = cfg.ok || '確定'; ok.className = 'btn small ' + (cfg.danger ? 'danger' : 'ok');
       m.hidden = false; no.focus();
-      function done(v) { m.hidden = true; ok.onclick = no.onclick = m.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); }
+      function done(v) { m.hidden = true; ok.onclick = no.onclick = m.onclick = cc.onchange = null; document.removeEventListener('keydown', onKey); resolve(v); }
       function onKey(e) { if (e.key === 'Escape') done(false); }
-      ok.onclick = function () { askConfirm.checked = cfg.check ? cc.checked : false; done(true); };
+      ok.onclick = function () {
+        askConfirm.checked = cfg.check ? cc.checked : false;
+        askConfirm.num = '';
+        if (cfg.num && cc.checked) {
+          if (nn.value === '' || !(Number(nn.value) >= 0)) { er.textContent = '請輸入夜衝費用（不收費請填 0）'; er.hidden = false; nn.focus(); return; }
+          askConfirm.num = String(Math.round(Number(nn.value)));
+        }
+        done(true);
+      };
       no.onclick = function () { done(false); };
       m.onclick = function (e) { if (e.target === m) done(false); };
       document.addEventListener('keydown', onKey);
@@ -1057,14 +1077,20 @@ window.GH_CONFIG = { API_BASE: 'https://small-star-8980greenhill-camping-api.gre
       var bk = bookings.filter(function (x) { return x.id === id; })[0];
       var info = bk ? bk.name + '｜' + bk.check_in + ' → ' + bk.check_out + '（' + bk.nights + ' 晚）｜' + bk.zones.join('、') + '｜' + money(bk.total) : id;
       var cfg = to === 'confirmed'
-        ? { title: '確認這筆預約？', body: (bk && /夜衝/.test(bk.note || '') ? '⚠ 這筆客人有申請夜衝，請確認你已經回覆並同意。\n' : '') + '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
+        ? { title: '確認這筆預約？', body: '確認後，這筆會變成「已預約」；客人如果已綁定 LINE，系統會自動通知他。', ok: '確認預約' }
         : { title: '取消這筆預約？', body: '取消後，營位會立刻釋出，別人就可以預訂。這筆紀錄會保留，狀態變成「已取消」。', ok: '取消並釋出', danger: true };
       cfg.info = info;
+      var rushAsk = to === 'confirmed' && bk && /【申請夜衝】/.test(bk.note || '');
+      if (rushAsk) {
+        cfg.check = { label: '同意夜衝，同時鎖定前一晚（' + addDays(bk.check_in, -1) + '）', checked: true };
+        cfg.num = { label: '夜衝費用（元，由你報價；會加進這筆的合計）' };
+        cfg.body = '⚠ 這筆客人有申請夜衝。勾選＝同意，前一晚也會鎖起來不能被訂；不勾＝只確認原本的日期，並通知客人夜衝未獲同意。\n' + cfg.body;
+      }
       if (to === 'cancelled' && bk) {
         cfg.check = bk.line_linked ? { label: '同時用 LINE 通知客人「預約已取消」', checked: true }
           : { label: '客人尚未綁定 LINE，無法 LINE 通知（可打電話聯絡）', checked: false, disabled: true };
       }
-      askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out, to === 'cancelled' && askConfirm.checked); });
+      askConfirm(cfg).then(function (yes) { if (yes) doStatus(id, to, out, to === 'cancelled' && askConfirm.checked, rushAsk ? askConfirm.checked : undefined, rushAsk ? askConfirm.num : ''); });
       return;
     }
     if (act === 'save') {
